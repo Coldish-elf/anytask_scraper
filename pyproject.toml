@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anytask-scraper"
-version = "0.7.2"
-description = "Scrape course data from anytask.org"
+version = "0.7.3"
+description = "Scraper for anytask.org"
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27",

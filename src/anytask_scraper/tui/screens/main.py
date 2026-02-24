@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import httpx
 from rich.text import Text
-from textual import on, work
+from textual import events, on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
@@ -62,6 +62,17 @@ from anytask_scraper.storage import (
     save_queue_json,
     save_queue_markdown,
     save_submissions_csv,
+    save_submissions_json,
+    save_submissions_markdown,
+)
+from anytask_scraper.tui.clipboard import (
+    copy_text_to_clipboard,
+    format_course_for_clipboard,
+    format_queue_entry_for_clipboard,
+    format_table_row_for_clipboard,
+    format_task_for_clipboard,
+    normalize_table_header,
+    rich_markup_to_plain,
 )
 from anytask_scraper.tui.export_params import (
     QUEUE_PARAMS,
@@ -178,6 +189,7 @@ class MainScreen(Screen[None]):
         Binding("slash", "focus_filter", "Filter", show=True),
         Binding("r", "reset_filters", "Reset", show=True),
         Binding("u", "undo_filters", "Undo", show=True),
+        Binding("ctrl+y", "copy_selection", "Copy", show=True),
         Binding("question_mark", "toggle_help", "Help", show=True),
         Binding("escape", "dismiss_overlay", "Back", show=False),
         Binding("ctrl+l", "logout", "Logout", show=True),
@@ -206,6 +218,7 @@ class MainScreen(Screen[None]):
         self._gb_all_tasks: list[str] = []
         self._help_visible = False
         self._export_preload_token = 0
+        self._action_menu_open = False
 
     def compose(self) -> ComposeResult:
         client = getattr(self.app, "client", None)
@@ -320,8 +333,26 @@ class MainScreen(Screen[None]):
                         with Container(classes="export-section", id="export-params-section"):
                             yield ParameterSelector(id="param-selector", classes="export-section")
                         with Container(classes="export-section"):
+                            yield Label("Submission Files", classes="export-section-title")
+                            with RadioSet(id="export-include-files-set"):
+                                yield RadioButton(
+                                    "Skip files",
+                                    id="export-subs-files-off-radio",
+                                    value=True,
+                                )
+                                yield RadioButton(
+                                    "Include files",
+                                    id="export-subs-files-on-radio",
+                                )
+                        with Container(classes="export-section"):
                             yield Label("Output Directory", classes="export-section-title")
                             yield Input(value="./output", id="output-dir-input")
+                        with Container(classes="export-section"):
+                            yield Label("Custom File Name", classes="export-section-title")
+                            yield Input(
+                                placeholder="Optional (with or without extension)",
+                                id="export-filename-input",
+                            )
                         with Container(classes="export-section"):
                             yield Button("Export", variant="primary", id="export-btn")
                             yield Label("", id="export-status-label")
@@ -373,6 +404,7 @@ class MainScreen(Screen[None]):
             "[dim]ctrl+q[/dim] Quit  "
             "[dim]a[/dim] Add  "
             "[dim]x[/dim] Remove  "
+            "[dim]ctrl+y[/dim] Copy  "
             "[dim]ctrl+l[/dim] Logout"
         )
 
@@ -430,6 +462,8 @@ class MainScreen(Screen[None]):
                 "[bold]Actions[/bold]\n"
                 "  a                 add course\n"
                 "  x                 remove course\n"
+                "  Ctrl+Y            copy current selection\n"
+                "  Right click       open action menu\n"
                 "  Enter             select / open\n"
                 "  Esc               back / dismiss\n"
                 "  Ctrl+Q            quit\n"
@@ -482,8 +516,10 @@ class MainScreen(Screen[None]):
                 "#export-filter-task",
                 "#export-filter-status",
                 "#export-filter-reviewer",
-                "#export-column-list",
+                "#param-option-list",
+                "#export-include-files-set",
                 "#output-dir-input",
+                "#export-filename-input",
                 "#export-btn",
             ]
         return zones
@@ -596,6 +632,12 @@ class MainScreen(Screen[None]):
         elif zone_id == "#output-dir-input":
             self.query_one("#output-dir-input", Input).focus()
             self._focus_left_pane = False
+        elif zone_id == "#export-filename-input":
+            self.query_one("#export-filename-input", Input).focus()
+            self._focus_left_pane = False
+        elif zone_id == "#export-include-files-set":
+            self.query_one("#export-include-files-set", RadioSet).focus()
+            self._focus_left_pane = False
 
     def action_focus_left(self) -> None:
         self._focus_left_pane = True
@@ -638,7 +680,9 @@ class MainScreen(Screen[None]):
         "#export-filter-status",
         "#export-filter-reviewer",
         "#param-option-list",
+        "#export-include-files-set",
         "#output-dir-input",
+        "#export-filename-input",
         "#export-btn",
     ]
 
@@ -718,6 +762,131 @@ class MainScreen(Screen[None]):
             elif event.key == "k":
                 event.prevent_default()
                 focused.action_cursor_up()
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        if event.button != 3:
+            return
+        event.prevent_default()
+        event.stop()
+        self._open_action_menu()
+
+    def _open_action_menu(self) -> None:
+        if self._action_menu_open:
+            return
+        self._action_menu_open = True
+        from anytask_scraper.tui.screens.action_menu import ActionMenuScreen
+
+        self.app.push_screen(
+            ActionMenuScreen(title="Actions", copy_label="Copy current selection"),
+            self._handle_action_menu_result,
+        )
+
+    def _handle_action_menu_result(self, result: str | None) -> None:
+        self._action_menu_open = False
+        if result == "copy":
+            self.action_copy_selection()
+
+    def action_copy_selection(self) -> None:
+        payload = self._build_copy_payload()
+        if payload is None:
+            self._show_status("Nothing to copy", kind="warning", timeout=2)
+            return
+
+        label, text = payload
+        success, method = copy_text_to_clipboard(text, app=self.app)
+        if not success:
+            self._show_status("Failed to copy to clipboard", kind="error")
+            return
+
+        method_suffix = f" via {method}" if method else ""
+        self._show_status(
+            f"Copied {label} to clipboard{method_suffix}",
+            kind="success",
+            timeout=2,
+        )
+
+    def _build_copy_payload(self) -> tuple[str, str] | None:
+        focused = self.focused
+        if isinstance(focused, OptionList):
+            return self._copy_course_payload()
+
+        active = self.query_one("#main-tabs", TabbedContent).active
+        if active == "tasks-tab":
+            return self._copy_task_payload()
+        if active == "queue-tab":
+            return self._copy_queue_payload()
+        if active == "gradebook-tab":
+            return self._copy_gradebook_payload()
+        if active == "export-tab":
+            return self._copy_export_preview_payload()
+        return None
+
+    def _copy_course_payload(self) -> tuple[str, str] | None:
+        if self._selected_course_id is None:
+            return None
+        course = self.app.courses.get(self._selected_course_id)  # type: ignore[attr-defined]
+        title = course.title if course is not None else f"Course {self._selected_course_id}"
+        text = format_course_for_clipboard(self._selected_course_id, title)
+        return ("course", text)
+
+    def _copy_task_payload(self) -> tuple[str, str] | None:
+        if not self.filtered_tasks:
+            return None
+        table = self.query_one("#task-table", DataTable)
+        row_index = self._table_cursor_index(table, len(self.filtered_tasks))
+        if row_index is None:
+            return None
+        task = self.filtered_tasks[row_index]
+        text = format_task_for_clipboard(task, teacher_view=self.is_teacher_view)
+        return ("task", text)
+
+    def _copy_queue_payload(self) -> tuple[str, str] | None:
+        if not self.filtered_queue_entries:
+            return None
+        table = self.query_one("#queue-table", DataTable)
+        row_index = self._table_cursor_index(table, len(self.filtered_queue_entries))
+        if row_index is None:
+            return None
+        entry = self.filtered_queue_entries[row_index]
+        text = format_queue_entry_for_clipboard(entry)
+        return ("queue entry", text)
+
+    def _copy_gradebook_payload(self) -> tuple[str, str] | None:
+        table = self.query_one("#gradebook-table", DataTable)
+        row_count = getattr(table, "row_count", 0)
+        if not isinstance(row_count, int) or row_count <= 0:
+            return None
+
+        row_index = self._table_cursor_index(table, row_count)
+        if row_index is None:
+            return None
+
+        headers = [normalize_table_header(column.label) for column in table.ordered_columns]
+        row_values = table.get_row_at(row_index)
+        text = format_table_row_for_clipboard(headers, row_values)
+        if not text:
+            return None
+        return ("gradebook row", text)
+
+    def _copy_export_preview_payload(self) -> tuple[str, str] | None:
+        preview = self.query_one("#export-preview-content", Static)
+        raw = str(preview.content)
+        text = rich_markup_to_plain(raw).strip()
+        if not text:
+            return None
+        return ("export preview", text)
+
+    def _table_cursor_index(self, table: DataTable[Any], size: int) -> int | None:
+        if size <= 0:
+            return None
+        cursor_row = getattr(table, "cursor_row", None)
+        if not isinstance(cursor_row, int):
+            return None
+        if cursor_row < 0:
+            return None
+        if cursor_row >= size:
+            return size - 1
+        return cursor_row
 
     def action_reset_filters(self) -> None:
         tabs = self.query_one("#main-tabs", TabbedContent)
@@ -1203,7 +1372,6 @@ class MainScreen(Screen[None]):
         prev_status = status_select.value
         prev_reviewer = reviewer_select.value
 
-        # Dynamic filter names by export type for clarity.
         if export_type in ("queue-export-radio", "subs-export-radio"):
             task_select.prompt = "Task"
             status_select.prompt = "Status"
@@ -1226,6 +1394,11 @@ class MainScreen(Screen[None]):
             files_radio.disabled = export_type != "subs-export-radio"
         except Exception:
             logger.debug("Failed to update files radio", exc_info=True)
+        try:
+            include_files_set = self.query_one("#export-include-files-set", RadioSet)
+            include_files_set.disabled = export_type != "subs-export-radio"
+        except Exception:
+            logger.debug("Failed to update include files selector", exc_info=True)
 
         if export_type == "tasks-export-radio":
             titles = sorted({t.title for t in self.all_tasks if t.title})
@@ -1398,6 +1571,18 @@ class MainScreen(Screen[None]):
         """Handle parameter selection changes - refresh preview."""
         self._refresh_export_preview()
 
+    @on(Input.Changed, "#export-filename-input")
+    def _filename_changed(self, event: Input.Changed) -> None:
+        """Refresh preview when custom filename changes."""
+        event.stop()
+        self._refresh_export_preview()
+
+    @on(RadioSet.Changed, "#export-include-files-set")
+    def _include_files_changed(self, event: RadioSet.Changed) -> None:
+        """Refresh preview when submissions include-files option changes."""
+        event.stop()
+        self._refresh_export_preview()
+
     def _get_included_columns(self) -> list[str]:
         """Get list of selected parameter names."""
         try:
@@ -1405,6 +1590,36 @@ class MainScreen(Screen[None]):
             return selector.get_included()
         except Exception:
             return []
+
+    def _get_custom_export_filename(self) -> str | None:
+        """Get optional custom filename from export controls."""
+        try:
+            value = self.query_one("#export-filename-input", Input).value.strip()
+        except Exception:
+            return None
+        return value or None
+
+    def _resolve_export_filename(self, default_filename: str) -> str:
+        """Resolve preview filename, appending default suffix when needed."""
+        custom = self._get_custom_export_filename()
+        if not custom:
+            return default_filename
+        safe_name = Path(custom).name
+        if not safe_name:
+            return default_filename
+        default_suffix = Path(default_filename).suffix
+        if default_suffix and not Path(safe_name).suffix:
+            return f"{safe_name}{default_suffix}"
+        return safe_name
+
+    def _get_include_submission_files(self) -> bool:
+        """Return True when submissions export should download files."""
+        try:
+            files_set = self.query_one("#export-include-files-set", RadioSet)
+            btn = files_set.pressed_button
+            return bool(btn and btn.id == "export-subs-files-on-radio")
+        except Exception:
+            return False
 
     def _refresh_export_preview(self) -> None:
         """Regenerate the export preview pane."""
@@ -1581,6 +1796,11 @@ class MainScreen(Screen[None]):
 
         elif export_type == "subs-export-radio":
             if format_type == "files":
+                if not self._get_include_submission_files():
+                    return (
+                        "[dim]Files Only mode requires enabling\n"
+                        "'Include files (Submissions)'[/dim]"
+                    )
                 return "[dim]Files Only mode:\nDownloads submission files\nto student folders[/dim]"
             sub_entries = list(self.all_queue_entries)
             if not sub_entries:
@@ -1609,8 +1829,10 @@ class MainScreen(Screen[None]):
 
         if fmt == "json":
             items = []
-            for t in tasks:
+            for i, t in enumerate(tasks, 1):
                 item: dict[str, Any] = {}
+                if not included or "#" in included:
+                    item["#"] = i
                 if not included or "Title" in included:
                     item["title"] = t.title
                 if (not included or "Score" in included) and t.score is not None:
@@ -1631,7 +1853,8 @@ class MainScreen(Screen[None]):
                 indent=2,
                 ensure_ascii=False,
             )
-            return f"[bold]course_{course_id}.json[/bold]\n{preview}{suffix}"
+            name = self._resolve_export_filename(f"course_{course_id}.json")
+            return f"[bold]{name}[/bold]\n{preview}{suffix}"
 
         elif fmt == "csv":
             header_parts = []
@@ -1673,7 +1896,8 @@ class MainScreen(Screen[None]):
                     dl = t.deadline.strftime("%d.%m.%Y") if t.deadline else "-"
                     row_parts.append(dl)
                 lines.append(",".join(row_parts))
-            return f"[bold]course_{course_id}.csv[/bold]\n" + "\n".join(lines) + suffix
+            name = self._resolve_export_filename(f"course_{course_id}.csv")
+            return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
         elif fmt == "markdown":
             lines = [f"# Course {course_id}", ""]
@@ -1685,7 +1909,8 @@ class MainScreen(Screen[None]):
                 if (not included or "Deadline" in included) and t.deadline:
                     lines.append(f"Deadline: {t.deadline.strftime('%d.%m.%Y')}")
                 lines.append("")
-            return f"[bold]course_{course_id}.md[/bold]\n" + "\n".join(lines) + suffix
+            name = self._resolve_export_filename(f"course_{course_id}.md")
+            return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
         return "[dim]Select a format[/dim]"
 
@@ -1720,7 +1945,8 @@ class MainScreen(Screen[None]):
                 indent=2,
                 ensure_ascii=False,
             )
-            return f"[bold]queue_{course_id}.json[/bold]\n{preview}{suffix}"
+            name = self._resolve_export_filename(f"queue_{course_id}.json")
+            return f"[bold]{name}[/bold]\n{preview}{suffix}"
 
         elif fmt == "csv":
             header_parts = []
@@ -1756,7 +1982,8 @@ class MainScreen(Screen[None]):
                 if not included or "Grade" in included:
                     row_parts.append(e.mark)
                 lines.append(",".join(row_parts))
-            return f"[bold]queue_{course_id}.csv[/bold]\n" + "\n".join(lines) + suffix
+            name = self._resolve_export_filename(f"queue_{course_id}.csv")
+            return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
         elif fmt == "markdown":
             lines = [f"# Queue - Course {course_id}", ""]
@@ -1769,7 +1996,8 @@ class MainScreen(Screen[None]):
                 if not included or "Status" in included:
                     parts.append(f"[{e.status_name}]")
                 lines.append(f"- {' — '.join(parts)}")
-            return f"[bold]queue_{course_id}.md[/bold]\n" + "\n".join(lines) + suffix
+            name = self._resolve_export_filename(f"queue_{course_id}.md")
+            return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
         return "[dim]Select a format[/dim]"
 
@@ -1813,7 +2041,8 @@ class MainScreen(Screen[None]):
                 indent=2,
                 ensure_ascii=False,
             )
-            return f"[bold]submissions_{course_id}.json[/bold]\n{preview}{suffix}"
+            name = self._resolve_export_filename(f"submissions_{course_id}.json")
+            return f"[bold]{name}[/bold]\n{preview}{suffix}"
 
         elif fmt == "csv":
             header_parts = []
@@ -1857,7 +2086,8 @@ class MainScreen(Screen[None]):
                 if not included or "Comments" in included:
                     row_parts.append("0")
                 lines.append(",".join(row_parts))
-            return f"[bold]submissions_{course_id}.csv[/bold]\n" + "\n".join(lines) + suffix
+            name = self._resolve_export_filename(f"submissions_{course_id}.csv")
+            return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
         elif fmt == "markdown":
             lines = [f"# Submissions - Course {course_id}", ""]
@@ -1872,7 +2102,8 @@ class MainScreen(Screen[None]):
                 if not included or "Grade" in included:
                     parts.append(f"Grade: {e.mark}")
                 lines.append(f"- {' — '.join(parts)}")
-            return f"[bold]submissions_{course_id}.md[/bold]\n" + "\n".join(lines) + suffix
+            name = self._resolve_export_filename(f"submissions_{course_id}.md")
+            return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
         elif fmt == "files":
             return "[dim]Files Only mode:\nDownloads submission files\nto student folders[/dim]"
@@ -1922,7 +2153,8 @@ class MainScreen(Screen[None]):
                 indent=2,
                 ensure_ascii=False,
             )
-            return f"[bold]gradebook_{course_id}.json[/bold]\n{preview}{suffix}"
+            name = self._resolve_export_filename(f"gradebook_{course_id}.json")
+            return f"[bold]{name}[/bold]\n{preview}{suffix}"
 
         elif fmt == "csv":
             header_parts = []
@@ -1956,7 +2188,8 @@ class MainScreen(Screen[None]):
                 if count >= 2:
                     break
             suffix = f"\n[dim]... and {total - count} more[/dim]" if total > count else ""
-            return f"[bold]gradebook_{course_id}.csv[/bold]\n" + "\n".join(lines) + suffix
+            name = self._resolve_export_filename(f"gradebook_{course_id}.csv")
+            return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
         elif fmt == "markdown":
             lines = [f"# Gradebook - Course {course_id}", ""]
@@ -1979,7 +2212,8 @@ class MainScreen(Screen[None]):
                 if count >= 2:
                     break
             suffix = f"\n[dim]... and {total - count} more[/dim]" if total > count else ""
-            return f"[bold]gradebook_{course_id}.md[/bold]\n" + "\n".join(lines) + suffix
+            name = self._resolve_export_filename(f"gradebook_{course_id}.md")
+            return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
         return "[dim]Select a format[/dim]"
 
@@ -2011,8 +2245,25 @@ class MainScreen(Screen[None]):
         output_path = Path(output_dir).expanduser().resolve()
 
         filters = self._get_current_export_filters()
+        columns = self._get_included_columns()
+        filename = self._get_custom_export_filename()
+        include_files = self._get_include_submission_files()
+        if export_type == "subs-export-radio" and fmt == "files" and not include_files:
+            self._set_export_status(
+                "Enable 'Include files (Submissions)' for Files Only export",
+                "error",
+            )
+            return
         self._set_export_status(f"Exporting to {output_path}...", "info")
-        self._do_export(fmt, output_path, export_type or "tasks-export-radio", filters)
+        self._do_export(
+            fmt,
+            output_path,
+            export_type or "tasks-export-radio",
+            filters,
+            columns,
+            filename,
+            include_files,
+        )
 
     def _set_export_status(self, message: str, kind: str = "info") -> None:
         label = self.query_one("#export-status-label", Label)
@@ -2027,11 +2278,13 @@ class MainScreen(Screen[None]):
         output_path: Path,
         export_type: str = "tasks-export-radio",
         filters: dict[str, str] | None = None,
+        columns: list[str] | None = None,
+        filename: str | None = None,
+        include_files: bool = False,
     ) -> None:
         try:
             output_path.mkdir(parents=True, exist_ok=True)
             course_id = self._selected_course_id or 0
-            columns = self._get_included_columns()
 
             if export_type == "tasks-export-radio":
                 course = self.app.current_course  # type: ignore[attr-defined]
@@ -2058,11 +2311,26 @@ class MainScreen(Screen[None]):
                 )
 
                 if fmt == "json":
-                    saved = save_course_json(filtered_course, output_path)
+                    saved = save_course_json(
+                        filtered_course,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
                 elif fmt == "csv":
-                    saved = save_course_csv(filtered_course, output_path, columns=columns)
+                    saved = save_course_csv(
+                        filtered_course,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
                 else:
-                    saved = save_course_markdown(filtered_course, output_path)
+                    saved = save_course_markdown(
+                        filtered_course,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
 
             elif export_type == "queue-export-radio":
                 queue = self._load_queue_for_export(course_id)
@@ -2082,11 +2350,26 @@ class MainScreen(Screen[None]):
                 )
 
                 if fmt == "json":
-                    saved = save_queue_json(filtered_queue, output_path)
+                    saved = save_queue_json(
+                        filtered_queue,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
                 elif fmt == "csv":
-                    saved = save_queue_csv(filtered_queue, output_path, columns=columns)
+                    saved = save_queue_csv(
+                        filtered_queue,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
                 else:
-                    saved = save_queue_markdown(filtered_queue, output_path)
+                    saved = save_queue_markdown(
+                        filtered_queue,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
 
             elif export_type == "subs-export-radio":
                 queue = self._load_queue_for_export(course_id)
@@ -2135,7 +2418,7 @@ class MainScreen(Screen[None]):
                         subs.append(sub)
                     except Exception:
                         logger.debug("Failed to fetch submission", exc_info=True)
-                        continue  # Skip failed fetches
+                        continue
 
                 if not subs:
                     self.app.call_from_thread(
@@ -2145,15 +2428,16 @@ class MainScreen(Screen[None]):
                     )
                     return
 
-                self.app.call_from_thread(
-                    self._set_export_status,
-                    f"Downloading files for {len(subs)} submissions...",
-                    "info",
-                )
                 total_files = 0
-                for sub in subs:
-                    downloaded = download_submission_files(client, sub, output_path)
-                    total_files += len(downloaded)
+                if include_files:
+                    self.app.call_from_thread(
+                        self._set_export_status,
+                        f"Downloading files for {len(subs)} submissions...",
+                        "info",
+                    )
+                    for sub in subs:
+                        downloaded = download_submission_files(client, sub, output_path)
+                        total_files += len(downloaded)
 
                 if fmt == "files":
                     self.app.call_from_thread(
@@ -2163,31 +2447,37 @@ class MainScreen(Screen[None]):
                     )
                     return
                 elif fmt == "csv":
-                    saved = save_submissions_csv(subs, course_id, output_path)
+                    saved = save_submissions_csv(
+                        subs,
+                        course_id,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
                 elif fmt == "json":
-                    import json as json_mod
-                    from dataclasses import asdict
-
-                    saved = output_path / f"submissions_{course_id}.json"
-                    saved.write_text(
-                        json_mod.dumps(
-                            [asdict(s) for s in subs],
-                            indent=2,
-                            default=str,
-                            ensure_ascii=False,
-                        )
+                    saved = save_submissions_json(
+                        subs,
+                        course_id,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
                     )
                 else:
-                    queue = ReviewQueue(
-                        course_id=course_id,
-                        submissions={s.student_url or str(s.issue_id): s for s in subs},
+                    saved = save_submissions_markdown(
+                        subs,
+                        course_id,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
                     )
-                    saved = save_queue_markdown(queue, output_path)
 
                 saved_label = saved.name if hasattr(saved, "name") else saved
+                status = f"Saved: {saved_label}"
+                if include_files:
+                    status += f" ({total_files} files downloaded)"
                 self.app.call_from_thread(
                     self._set_export_status,
-                    f"Saved: {saved_label} ({total_files} files downloaded)",
+                    status,
                     "success",
                 )
                 return
@@ -2207,11 +2497,26 @@ class MainScreen(Screen[None]):
                 )
 
                 if fmt == "json":
-                    saved = save_gradebook_json(filtered_gradebook, output_path)
+                    saved = save_gradebook_json(
+                        filtered_gradebook,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
                 elif fmt == "csv":
-                    saved = save_gradebook_csv(filtered_gradebook, output_path, columns=columns)
+                    saved = save_gradebook_csv(
+                        filtered_gradebook,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
                 else:
-                    saved = save_gradebook_markdown(filtered_gradebook, output_path)
+                    saved = save_gradebook_markdown(
+                        filtered_gradebook,
+                        output_path,
+                        columns=columns,
+                        filename=filename,
+                    )
             else:
                 self.app.call_from_thread(self._set_export_status, "Unknown export type", "error")
                 return
@@ -2752,7 +3057,7 @@ class MainScreen(Screen[None]):
                 indicator = " ▼" if self._gb_sort_reverse else " ▲"
                 labels.append(f"{col}{indicator}")
             else:
-                labels.append(f"{col}  ")  # Placeholder for " arrow"
+                labels.append(f"{col}  ")
         table.add_columns(*labels)
 
         row_num = 0
@@ -2778,7 +3083,7 @@ class MainScreen(Screen[None]):
     def _gb_header_selected(self, event: DataTable.HeaderSelected) -> None:
         col_idx = event.column_index
         if col_idx == 0:
-            return  # # column, not sortable
+            return
         if self._gb_sort_column == col_idx:
             self._gb_sort_reverse = not self._gb_sort_reverse
         else:
@@ -2803,18 +3108,18 @@ class MainScreen(Screen[None]):
                     all_tasks.append(t)
         self._gb_all_tasks = all_tasks
 
-        num_fixed = 4  # #, Group, Student, Teacher
-        total_col = num_fixed + len(all_tasks)  # Total column index
+        num_fixed = 4
+        total_col = num_fixed + len(all_tasks)
 
-        if col == 1:  # Group
+        if col == 1:
             flat.sort(key=lambda x: x[0].group_name.lower(), reverse=self._gb_sort_reverse)
-        elif col == 2:  # Student
+        elif col == 2:
             flat.sort(key=lambda x: x[1].student_name.lower(), reverse=self._gb_sort_reverse)
-        elif col == 3:  # Teacher
+        elif col == 3:
             flat.sort(key=lambda x: x[0].teacher_name.lower(), reverse=self._gb_sort_reverse)
-        elif col == total_col:  # Total
+        elif col == total_col:
             flat.sort(key=lambda x: x[1].total_score, reverse=self._gb_sort_reverse)
-        elif num_fixed <= col < total_col:  # Task score column
+        elif num_fixed <= col < total_col:
             task_name = all_tasks[col - num_fixed]
 
             def _task_score(item: tuple[GradebookGroup, GradebookEntry]) -> float:

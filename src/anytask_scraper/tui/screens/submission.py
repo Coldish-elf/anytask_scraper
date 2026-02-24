@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical, VerticalScroll
@@ -10,6 +11,7 @@ from textual.widgets import Label, Static
 
 from anytask_scraper.models import Submission
 from anytask_scraper.parser import strip_html
+from anytask_scraper.tui.clipboard import copy_text_to_clipboard, format_submission_for_clipboard
 
 
 class SubmissionScreen(Screen[None]):
@@ -17,6 +19,7 @@ class SubmissionScreen(Screen[None]):
 
     BINDINGS = [
         Binding("escape", "go_back", "Back", show=True),
+        Binding("ctrl+y", "copy_submission", "Copy", show=True),
         Binding("j", "scroll_down", "Down", show=False),
         Binding("k", "scroll_up", "Up", show=False),
     ]
@@ -24,6 +27,7 @@ class SubmissionScreen(Screen[None]):
     def __init__(self, submission: Submission) -> None:
         super().__init__()
         self.submission = submission
+        self._action_menu_open = False
 
     def compose(self) -> ComposeResult:
         sub = self.submission
@@ -95,10 +99,47 @@ class SubmissionScreen(Screen[None]):
 
                     yield card
 
-        yield Static("[dim]Esc[/dim] Back  [dim]j/k[/dim] Scroll", id="sub-key-bar")
+        yield Static(
+            "[dim]Esc[/dim] Back  [dim]Ctrl+Y[/dim] Copy  [dim]j/k[/dim] Scroll",
+            id="sub-key-bar",
+        )
 
     def action_go_back(self) -> None:
         self.app.pop_screen()
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        if event.button != 3:
+            return
+        event.prevent_default()
+        event.stop()
+        self._open_action_menu()
+
+    def _open_action_menu(self) -> None:
+        if self._action_menu_open:
+            return
+        self._action_menu_open = True
+        from anytask_scraper.tui.screens.action_menu import ActionMenuScreen
+
+        self.app.push_screen(
+            ActionMenuScreen(title="Submission actions", copy_label="Copy submission"),
+            self._handle_action_menu_result,
+        )
+
+    def _handle_action_menu_result(self, result: str | None) -> None:
+        self._action_menu_open = False
+        if result == "copy":
+            self.action_copy_submission()
+
+    def action_copy_submission(self) -> None:
+        success, _method = copy_text_to_clipboard(
+            format_submission_for_clipboard(self.submission),
+            app=self.app,
+        )
+        if not success:
+            self.notify("Failed to copy submission", severity="error")
+            return
+
+        self.notify("Submission copied to clipboard", timeout=2)
 
     def action_scroll_down(self) -> None:
         self.query_one("#sub-scroll", VerticalScroll).scroll_down()

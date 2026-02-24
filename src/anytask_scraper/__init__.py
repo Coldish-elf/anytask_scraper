@@ -46,6 +46,8 @@ from anytask_scraper.storage import (
     save_queue_json,
     save_queue_markdown,
     save_submissions_csv,
+    save_submissions_json,
+    save_submissions_markdown,
 )
 
 __all__ = [
@@ -88,6 +90,8 @@ __all__ = [
     "save_queue_json",
     "save_queue_markdown",
     "save_submissions_csv",
+    "save_submissions_json",
+    "save_submissions_markdown",
     "setup_logging",
     "strip_html",
 ]

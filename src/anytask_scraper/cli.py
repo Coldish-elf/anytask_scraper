@@ -132,6 +132,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output directory (default: --default-output or '.')",
     )
     course_p.add_argument(
+        "--filename",
+        help="Custom output filename (with or without extension)",
+    )
+    course_p.add_argument(
         "--format",
         "-f",
         choices=["json", "markdown", "csv", "table"],
@@ -167,6 +171,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output",
         "-o",
         help="Output directory (default: --default-output or '.')",
+    )
+    queue_p.add_argument(
+        "--filename",
+        help="Custom output filename (with or without extension)",
     )
     queue_p.add_argument(
         "--format",
@@ -212,6 +220,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output",
         "-o",
         help="Output directory (default: --default-output or '.')",
+    )
+    gradebook_p.add_argument(
+        "--filename",
+        help="Custom output filename (with or without extension)",
     )
     gradebook_p.add_argument(
         "--format",
@@ -509,6 +521,8 @@ def _run_settings(args: argparse.Namespace) -> None:
 
 def _run_course(args: argparse.Namespace, client: AnytaskClient) -> None:
     output_dir = _resolve_output_dir(args)
+    if args.filename and len(args.course) > 1:
+        raise ValueError("--filename can only be used with a single --course value")
 
     for course_id in args.course:
         with console.status(f"[bold blue]Fetching course {course_id}..."):
@@ -533,14 +547,14 @@ def _run_course(args: argparse.Namespace, client: AnytaskClient) -> None:
         if args.format == "table":
             display_course(course, console)
         elif args.format == "json":
-            path = save_course_json(course, output_dir)
+            path = save_course_json(course, output_dir, filename=args.filename)
             _print_ok(
                 args,
                 f"Course {course_id} ([bold]{course.title}[/bold]): "
                 f"{len(course.tasks)} tasks -> {path}",
             )
         elif args.format == "markdown":
-            path = save_course_markdown(course, output_dir)
+            path = save_course_markdown(course, output_dir, filename=args.filename)
             _print_ok(
                 args,
                 f"Course {course_id} ([bold]{course.title}[/bold]): "
@@ -557,7 +571,7 @@ def _run_course(args: argparse.Namespace, client: AnytaskClient) -> None:
                 else:
                     all_cols = ["#", "Title", "Score", "Status", "Deadline"]
                 columns = [c for c in all_cols if c not in args.exclude_columns]
-            path = save_course_csv(course, output_dir, columns=columns)
+            path = save_course_csv(course, output_dir, columns=columns, filename=args.filename)
             _print_ok(
                 args,
                 f"Course {course_id} ([bold]{course.title}[/bold]): "
@@ -653,10 +667,10 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
             for sub in queue.submissions.values():
                 display_submission(sub, console)
     elif args.format == "json":
-        path = save_queue_json(queue, output_dir)
+        path = save_queue_json(queue, output_dir, filename=args.filename)
         _print_ok(args, f"Saved -> {path}")
     elif args.format == "markdown":
-        path = save_queue_markdown(queue, output_dir)
+        path = save_queue_markdown(queue, output_dir, filename=args.filename)
         _print_ok(args, f"Saved -> {path}")
     elif args.format == "csv":
         columns = None
@@ -665,7 +679,7 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
         elif args.exclude_columns:
             all_cols = ["#", "Student", "Task", "Status", "Reviewer", "Updated", "Grade"]
             columns = [c for c in all_cols if c not in args.exclude_columns]
-        path = save_queue_csv(queue, output_dir, columns=columns)
+        path = save_queue_csv(queue, output_dir, columns=columns, filename=args.filename)
         _print_ok(args, f"Saved -> {path}")
         if queue.submissions:
             sub_path = save_submissions_csv(queue.submissions, course_id, output_dir)
@@ -705,10 +719,10 @@ def _run_gradebook(args: argparse.Namespace, client: AnytaskClient) -> None:
     if args.format == "table":
         display_gradebook(gradebook, console)
     elif args.format == "json":
-        path = save_gradebook_json(gradebook, output_dir)
+        path = save_gradebook_json(gradebook, output_dir, filename=args.filename)
         _print_ok(args, f"Saved -> {path}")
     elif args.format == "markdown":
-        path = save_gradebook_markdown(gradebook, output_dir)
+        path = save_gradebook_markdown(gradebook, output_dir, filename=args.filename)
         _print_ok(args, f"Saved -> {path}")
     elif args.format == "csv":
         columns = None
@@ -722,7 +736,7 @@ def _run_gradebook(args: argparse.Namespace, client: AnytaskClient) -> None:
                         all_cols.append(t)
             all_cols.append("Total")
             columns = [c for c in all_cols if c not in args.exclude_columns]
-        path = save_gradebook_csv(gradebook, output_dir, columns=columns)
+        path = save_gradebook_csv(gradebook, output_dir, columns=columns, filename=args.filename)
         _print_ok(args, f"Saved -> {path}")
 
     if args.show and args.format != "table":

@@ -524,6 +524,33 @@ RadioButton:disabled .toggle--button {
     padding: 0 2;
 }
 
+ActionMenuScreen {
+    align: center middle;
+}
+
+#action-menu-box {
+    width: 38;
+    height: auto;
+    background: $surface;
+    border: round $primary;
+    padding: 1 2;
+}
+
+#action-menu-title {
+    text-style: bold;
+    color: $text;
+    margin-bottom: 1;
+}
+
+#action-menu-options {
+    height: auto;
+}
+
+#action-menu-hint {
+    color: $text-muted;
+    margin-top: 1;
+}
+
 SubmissionScreen {
     layout: vertical;
 }

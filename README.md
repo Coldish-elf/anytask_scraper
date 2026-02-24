@@ -17,8 +17,8 @@
 Требуется **Python 3.10+**.
 
 ```bash
-git clone https://github.com/Coldish-elf/Anytask_Scraper
-cd Anytask_Scraper
+git clone https://github.com/Coldish-elf/anytask_scraper
+cd anytask_scraper
 pip install -e .
 ```
 
@@ -72,5 +72,5 @@ anytask-tui
 - **[Configuration](docs/Configuration.md)** - Настройки и авторизация.
 - **[Export formats](docs/Export_formats.md)** - Форматы экспорта.
 - **[Library Reference](docs/Library_Reference.md)** - Использование в Python-скриптах.
-- **[Roadmap](docs/Roadmap.md)** - План разработки.
-- **[Changelog](docs/Changelog.md)** - История изменений.
+- **[Roadmap](docs/roadmap.md)** - План разработки.
+- **[Changelog](docs/CHANGELOG.md)** - История изменений.
