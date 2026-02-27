@@ -1,4 +1,4 @@
-"""anytask_scraper: Scrape course data from anytask.org."""
+"""anytask_scraper: Scraper for anytask.org."""
 
 from anytask_scraper._logging import setup_logging
 from anytask_scraper.client import AnytaskClient, DownloadResult, LoginError

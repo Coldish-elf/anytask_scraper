@@ -70,7 +70,7 @@ logger = logging.getLogger(__name__)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Scrape course data from anytask.org")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--username", "-u", help="Anytask username")
     parser.add_argument("--password", "-p", help="Anytask password")
     parser.add_argument(
@@ -216,6 +216,16 @@ def _build_parser() -> argparse.ArgumentParser:
     queue_p.add_argument("--filter-reviewer", help="Filter by reviewer name (substring match)")
     queue_p.add_argument("--filter-status", help="Filter by status name (substring match)")
     queue_p.add_argument(
+        "--last-name-from",
+        default="",
+        help="Keep only students whose last name >= this value (alphabetical, case-insensitive)",
+    )
+    queue_p.add_argument(
+        "--last-name-to",
+        default="",
+        help="Keep only students whose last name <= this value (prefix-inclusive)",
+    )
+    queue_p.add_argument(
         "--include-columns",
         nargs="+",
         default=None,
@@ -271,6 +281,16 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="Keep only students with total score >= this value",
+    )
+    gradebook_p.add_argument(
+        "--last-name-from",
+        default="",
+        help="Keep only students whose last name >= this value (alphabetical, case-insensitive)",
+    )
+    gradebook_p.add_argument(
+        "--last-name-to",
+        default="",
+        help="Keep only students whose last name <= this value (prefix-inclusive)",
     )
     gradebook_p.add_argument(
         "--include-columns",
@@ -662,6 +682,12 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
     if args.filter_status:
         needle = args.filter_status.lower()
         entries = [e for e in entries if needle in e.status_name.lower()]
+    if args.last_name_from or args.last_name_to:
+        from anytask_scraper.models import last_name_in_range
+        entries = [
+            e for e in entries
+            if last_name_in_range(e.student_name, args.last_name_from, args.last_name_to)
+        ]
 
     queue = ReviewQueue(course_id=course_id, entries=entries)
 
@@ -743,6 +769,8 @@ def _run_gradebook(args: argparse.Namespace, client: AnytaskClient) -> None:
         teacher=args.filter_teacher,
         student=args.filter_student,
         min_score=args.min_score,
+        last_name_from=args.last_name_from,
+        last_name_to=args.last_name_to,
     )
 
     total_entries = sum(len(g.entries) for g in gradebook.groups)

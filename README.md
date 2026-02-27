@@ -1,6 +1,6 @@
 # Anytask Scraper
 
-**Anytask Scraper** - это инструмент для сбора данных с платформы [anytask.org](https://anytask.org/).
+**Anytask Scraper** - инструмент для сбора данных с [anytask.org](https://anytask.org/).
 
 Проект представляет **CLI** и **TUI**. Также может использоваться как **Python-библиотека**.
 
@@ -63,8 +63,6 @@ anytask-tui
     ```
 
 ## Документация
-
-Документация, роадмап и чейнджлог доступны в [docs/](docs/):
 
 - **[QuickStart](docs/QuickStart.md)** - Быстрый старт.
 - **[CLI](docs/CLI.md)** - Справочник команд.

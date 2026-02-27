@@ -6,6 +6,17 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 
+def extract_last_name(name: str) -> str:
+    return name.split()[0] if name.strip() else name
+
+
+def last_name_in_range(name: str, from_name: str = "", to_name: str = "") -> bool:
+    ln = extract_last_name(name).casefold()
+    if from_name and ln < from_name.casefold():
+        return False
+    return not (to_name and ln > to_name.casefold() + "\uffff")
+
+
 @dataclass
 class Task:
     """Course task."""
@@ -156,6 +167,8 @@ def filter_gradebook(
     teacher: str = "",
     student: str = "",
     min_score: float | None = None,
+    last_name_from: str = "",
+    last_name_to: str = "",
 ) -> Gradebook:
     """Return a filtered copy of *gradebook*.
 
@@ -170,7 +183,11 @@ def filter_gradebook(
         If non-empty, keep only entries whose student name contains this
         substring (case-insensitive).
     min_score:
-        If set, keep only entries with ``total_score >= min_score``.
+        If set, keep only entries with total_score >= min_score.
+    last_name_from:
+        If non-empty, keep only entries whose last name >= this value
+    last_name_to:
+        If non-empty, keep only entries whose last name <= this value
     """
     filtered_groups: list[GradebookGroup] = []
     for g in gradebook.groups:
@@ -185,8 +202,14 @@ def filter_gradebook(
             entries = [e for e in entries if needle in e.student_name.lower()]
         if min_score is not None:
             entries = [e for e in entries if e.total_score >= min_score]
+        if last_name_from or last_name_to:
+            entries = [
+                e for e in entries
+                if last_name_in_range(e.student_name, last_name_from, last_name_to)
+            ]
 
-        if entries or (not student and min_score is None):
+        has_entry_filters = bool(student or min_score is not None or last_name_from or last_name_to)
+        if entries or not has_entry_filters:
             filtered_groups.append(
                 GradebookGroup(
                     group_name=g.group_name,

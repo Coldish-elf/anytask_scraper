@@ -41,6 +41,7 @@ from anytask_scraper.models import (
     ReviewQueue,
     Submission,
     Task,
+    last_name_in_range,
 )
 from anytask_scraper.parser import (
     extract_csrf_from_queue_page,
@@ -202,6 +203,7 @@ class MainScreen(Screen[None]):
         self._focus_left_pane = True
         self.all_tasks: list[Task] = []
         self.filtered_tasks: list[Task] = []
+        self._task_submission_cache: dict[tuple[int | None, str], Submission] = {}
         self.is_teacher_view = False
         self._selected_course_id: int | None = None
         self.all_queue_entries: list[QueueEntry] = []
@@ -333,6 +335,15 @@ class MainScreen(Screen[None]):
                                 prompt="Reviewer",
                                 id="export-filter-reviewer",
                             )
+                            with Horizontal(id="export-ln-range-row"):
+                                yield Input(
+                                    placeholder="From (А … Иванов)",
+                                    id="export-ln-from",
+                                )
+                                yield Input(
+                                    placeholder="To (П … Петров)",
+                                    id="export-ln-to",
+                                )
                         with Container(classes="export-section", id="export-params-section"):
                             yield ParameterSelector(id="param-selector", classes="export-section")
                         with Container(classes="export-section"):
@@ -683,6 +694,8 @@ class MainScreen(Screen[None]):
         "#export-filter-task",
         "#export-filter-status",
         "#export-filter-reviewer",
+        "#export-ln-from",
+        "#export-ln-to",
         "#param-option-list",
         "#export-include-files-set",
         "#output-dir-input",
@@ -725,8 +738,15 @@ class MainScreen(Screen[None]):
             widgets.append(widget)
         return widgets
 
+    _LN_INPUT_IDS = ("export-ln-from", "export-ln-to")
+
     def action_filter_next(self) -> None:
-        if isinstance(self.focused, Input):
+        focused = self.focused
+        if isinstance(focused, Input):
+            if getattr(focused, "id", None) in self._LN_INPUT_IDS:
+                tabs = self.query_one("#main-tabs", TabbedContent)
+                if tabs.active == "export-tab":
+                    self._export_focus_next()
             return
         tabs = self.query_one("#main-tabs", TabbedContent)
         active = tabs.active
@@ -738,7 +758,12 @@ class MainScreen(Screen[None]):
             self.query_one("#gb-filter-bar", GradebookFilterBar).focus_next_filter()
 
     def action_filter_prev(self) -> None:
-        if isinstance(self.focused, Input):
+        focused = self.focused
+        if isinstance(focused, Input):
+            if getattr(focused, "id", None) in self._LN_INPUT_IDS:
+                tabs = self.query_one("#main-tabs", TabbedContent)
+                if tabs.active == "export-tab":
+                    self._export_focus_prev()
             return
         tabs = self.query_one("#main-tabs", TabbedContent)
         active = tabs.active
@@ -994,9 +1019,7 @@ class MainScreen(Screen[None]):
                     self.app.call_from_thread(self._fetch_course, entry.course_id)
                     added += 1
 
-            role_info = (
-                f"{len(teacher_ids)} teacher, {len(student_only)} student-only"
-            )
+            role_info = f"{len(teacher_ids)} teacher, {len(student_only)} student-only"
             if added:
                 self.app.call_from_thread(
                     self._show_status,
@@ -1177,7 +1200,10 @@ class MainScreen(Screen[None]):
         except (ValueError, TypeError):
             return
         if 0 <= idx < len(self.filtered_tasks):
-            self._show_detail(self.filtered_tasks[idx])
+            task = self.filtered_tasks[idx]
+            self._show_detail(task)
+            if not self.is_teacher_view:
+                self._fetch_and_show_task_submission(task)
 
     @on(QueueFilterBar.Changed)
     def _handle_queue_filter(self, event: QueueFilterBar.Changed) -> None:
@@ -1419,6 +1445,13 @@ class MainScreen(Screen[None]):
         event.stop()
         self._refresh_export_preview()
 
+    @on(Input.Changed, "#export-ln-from")
+    @on(Input.Changed, "#export-ln-to")
+    def _export_ln_range_changed(self, event: Input.Changed) -> None:
+        """Handle last-name range input changes - refresh preview."""
+        event.stop()
+        self._refresh_export_preview()
+
     def _update_export_filters(self) -> None:
         """Update row filter dropdowns based on current export type."""
         try:
@@ -1460,6 +1493,14 @@ class MainScreen(Screen[None]):
             include_files_set.disabled = export_type != "subs-export-radio"
         except Exception:
             logger.debug("Failed to update include files selector", exc_info=True)
+        try:
+            ln_from = self.query_one("#export-ln-from", Input)
+            ln_to = self.query_one("#export-ln-to", Input)
+            is_tasks = export_type == "tasks-export-radio"
+            ln_from.disabled = is_tasks
+            ln_to.disabled = is_tasks
+        except Exception:
+            logger.debug("Failed to update last-name range inputs", exc_info=True)
 
         if export_type == "tasks-export-radio":
             titles = sorted({t.title for t in self.all_tasks if t.title})
@@ -1596,6 +1637,13 @@ class MainScreen(Screen[None]):
                     filters["group"] = str(task_val)
                 if reviewer_val is not Select.BLANK:
                     filters["teacher"] = str(reviewer_val)
+            if export_type != "tasks-export-radio":
+                ln_from = self.query_one("#export-ln-from", Input).value.strip()
+                ln_to = self.query_one("#export-ln-to", Input).value.strip()
+                if ln_from:
+                    filters["last_name_from"] = ln_from
+                if ln_to:
+                    filters["last_name_to"] = ln_to
         except Exception:
             logger.debug("Failed to collect export filters", exc_info=True)
         return filters
@@ -1833,6 +1881,15 @@ class MainScreen(Screen[None]):
                 q_entries = [e for e in q_entries if e.status_name == filters["status"]]
             if filters.get("reviewer"):
                 q_entries = [e for e in q_entries if e.responsible_name == filters["reviewer"]]
+            if filters.get("last_name_from") or filters.get("last_name_to"):
+                q_entries = [
+                    e for e in q_entries
+                    if last_name_in_range(
+                        e.student_name,
+                        filters.get("last_name_from", ""),
+                        filters.get("last_name_to", ""),
+                    )
+                ]
             if not q_entries:
                 return "[dim]Queue data will be loaded during export[/dim]"
             return self._preview_queue(
@@ -1850,6 +1907,24 @@ class MainScreen(Screen[None]):
                 groups = [g for g in groups if g.group_name == filters["group"]]
             if filters.get("teacher"):
                 groups = [g for g in groups if g.teacher_name == filters["teacher"]]
+            if filters.get("last_name_from") or filters.get("last_name_to"):
+                ln_from = filters.get("last_name_from", "")
+                ln_to = filters.get("last_name_to", "")
+                groups = [
+                    GradebookGroup(
+                        group_name=g.group_name,
+                        group_id=g.group_id,
+                        teacher_name=g.teacher_name,
+                        task_titles=list(g.task_titles),
+                        max_scores=dict(g.max_scores),
+                        entries=[
+                            e for e in g.entries
+                            if last_name_in_range(e.student_name, ln_from, ln_to)
+                        ],
+                    )
+                    for g in groups
+                ]
+                groups = [g for g in groups if g.entries]
             total = sum(len(g.entries) for g in groups)
             if not total:
                 return "[dim]Gradebook data will be loaded during export[/dim]"
@@ -1873,6 +1948,15 @@ class MainScreen(Screen[None]):
                 sub_entries = [e for e in sub_entries if e.status_name == filters["status"]]
             if filters.get("reviewer"):
                 sub_entries = [e for e in sub_entries if e.responsible_name == filters["reviewer"]]
+            if filters.get("last_name_from") or filters.get("last_name_to"):
+                sub_entries = [
+                    e for e in sub_entries
+                    if last_name_in_range(
+                        e.student_name,
+                        filters.get("last_name_from", ""),
+                        filters.get("last_name_to", ""),
+                    )
+                ]
             if not sub_entries:
                 return "[dim]Queue data will be loaded during export[/dim]"
             return self._preview_submissions(
@@ -2056,7 +2140,7 @@ class MainScreen(Screen[None]):
                     parts.append(e.task_title)
                 if not included or "Status" in included:
                     parts.append(f"[{e.status_name}]")
-                lines.append(f"- {' — '.join(parts)}")
+                lines.append(f"- {' - '.join(parts)}")
             name = self._resolve_export_filename(f"queue_{course_id}.md")
             return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
@@ -2162,7 +2246,7 @@ class MainScreen(Screen[None]):
                     parts.append(f"[{e.status_name}]")
                 if not included or "Grade" in included:
                     parts.append(f"Grade: {e.mark}")
-                lines.append(f"- {' — '.join(parts)}")
+                lines.append(f"- {' - '.join(parts)}")
             name = self._resolve_export_filename(f"submissions_{course_id}.md")
             return f"[bold]{name}[/bold]\n" + "\n".join(lines) + suffix
 
@@ -2404,6 +2488,15 @@ class MainScreen(Screen[None]):
                         entries = [e for e in entries if e.status_name == filters["status"]]
                     if filters.get("reviewer"):
                         entries = [e for e in entries if e.responsible_name == filters["reviewer"]]
+                    if filters.get("last_name_from") or filters.get("last_name_to"):
+                        entries = [
+                            e for e in entries
+                            if last_name_in_range(
+                                e.student_name,
+                                filters.get("last_name_from", ""),
+                                filters.get("last_name_to", ""),
+                            )
+                        ]
 
                 filtered_queue = ReviewQueue(
                     course_id=queue.course_id,
@@ -2443,6 +2536,15 @@ class MainScreen(Screen[None]):
                         entries = [e for e in entries if e.status_name == filters["status"]]
                     if filters.get("reviewer"):
                         entries = [e for e in entries if e.responsible_name == filters["reviewer"]]
+                    if filters.get("last_name_from") or filters.get("last_name_to"):
+                        entries = [
+                            e for e in entries
+                            if last_name_in_range(
+                                e.student_name,
+                                filters.get("last_name_from", ""),
+                                filters.get("last_name_to", ""),
+                            )
+                        ]
 
                 accessible_entries = [e for e in entries if e.has_issue_access and e.issue_url]
                 if not accessible_entries:
@@ -2551,6 +2653,24 @@ class MainScreen(Screen[None]):
                         groups = [g for g in groups if g.group_name == filters["group"]]
                     if filters.get("teacher"):
                         groups = [g for g in groups if g.teacher_name == filters["teacher"]]
+                    if filters.get("last_name_from") or filters.get("last_name_to"):
+                        ln_from = filters.get("last_name_from", "")
+                        ln_to = filters.get("last_name_to", "")
+                        groups = [
+                            GradebookGroup(
+                                group_name=g.group_name,
+                                group_id=g.group_id,
+                                teacher_name=g.teacher_name,
+                                task_titles=list(g.task_titles),
+                                max_scores=dict(g.max_scores),
+                                entries=[
+                                e for e in g.entries
+                                if last_name_in_range(e.student_name, ln_from, ln_to)
+                            ],
+                            )
+                            for g in groups
+                        ]
+                        groups = [g for g in groups if g.entries]
 
                 filtered_gradebook = Gradebook(
                     course_id=gradebook.course_id,
@@ -2821,6 +2941,55 @@ class MainScreen(Screen[None]):
         self.query_one("#queue-table", DataTable).disabled = False
 
     @work(thread=True)
+    def _fetch_and_show_task_submission(self, task: Task) -> None:
+        submit_url = task.submit_url.strip()
+        if not submit_url:
+            self.app.call_from_thread(
+                self._show_status,
+                "No submission topic for this task",
+                kind="warning",
+            )
+            return
+        if task.status.strip() == "Новый":
+            self.app.call_from_thread(
+                self._show_status,
+                "No submission yet for this task",
+                kind="info",
+            )
+            return
+
+        cache_key = (self._selected_course_id, submit_url)
+        cached = self._task_submission_cache.get(cache_key)
+        if cached is not None:
+            self.app.call_from_thread(self._push_submission_screen, cached)
+            return
+
+        try:
+            client = self.app.client  # type: ignore[attr-defined]
+            if not client:
+                return
+
+            html = client.fetch_submission_page(submit_url)
+            issue_id = extract_issue_id_from_breadcrumb(html)
+            if issue_id == 0:
+                self.app.call_from_thread(
+                    self._show_status,
+                    "Submission topic is unavailable",
+                    kind="warning",
+                )
+                return
+
+            sub = parse_submission_page(html, issue_id)
+            self._task_submission_cache[cache_key] = sub
+            self.app.call_from_thread(self._push_submission_screen, sub)
+        except Exception as e:
+            self.app.call_from_thread(
+                self._show_status,
+                f"Submission topic error: {e}",
+                kind="error",
+            )
+
+    @work(thread=True)
     def _fetch_and_show_submission(self, entry: QueueEntry) -> None:
         try:
             if self._selected_course_id is not None:
@@ -2983,6 +3152,13 @@ class MainScreen(Screen[None]):
         if task.description:
             desc = strip_html(task.description)
             scroll.mount(Label(desc, classes="detail-text"))
+        if not self.is_teacher_view and task.submit_url and task.status.strip() != "Новый":
+            scroll.mount(
+                Label(
+                    "[dim]Press Enter or click to open submission topic[/dim]",
+                    classes="detail-text",
+                )
+            )
 
     _GRADEBOOK_COLOR_MAP: dict[str, str] = {
         "#65E31B": "bold green",

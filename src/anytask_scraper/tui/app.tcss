@@ -32,9 +32,47 @@ Input:focus {
     border: solid $accent;
 }
 
+Input:disabled {
+    border: tall $surface-darken-2;
+    background: transparent;
+    color: $text;
+    text-opacity: 100%;
+}
+
 Select {
     height: 3;
     margin: 0 1 0 0;
+}
+
+Select:disabled,
+Select:disabled:focus {
+    background: transparent;
+}
+
+Select:disabled > SelectCurrent,
+Select:disabled:focus > SelectCurrent {
+    border: tall $surface-darken-2;
+    background: transparent;
+    background-tint: transparent;
+}
+
+Select:disabled > SelectCurrent Static#label,
+Select:disabled > SelectCurrent .arrow,
+Select:disabled > SelectCurrent.-has-value Static#label,
+Select:disabled:focus > SelectCurrent Static#label,
+Select:disabled:focus > SelectCurrent .arrow,
+Select:disabled:focus > SelectCurrent.-has-value Static#label {
+    color: $text;
+    text-opacity: 100%;
+    background: transparent;
+    text-style: none;
+}
+
+Button:disabled {
+    border: solid $surface-darken-2;
+    background: transparent;
+    color: $text;
+    text-opacity: 100%;
 }
 
 .error-text { color: $error; text-style: bold; }
@@ -76,6 +114,13 @@ LoginScreen {
 
 #login-box Button:hover {
     background: $surface-lighten-2;
+}
+
+#login-box Button:disabled {
+    border: solid $surface-darken-2;
+    background: transparent;
+    color: $text;
+    text-opacity: 100%;
 }
 
 #login-box Input {
@@ -260,15 +305,15 @@ MainScreen {
 }
 
 #export-controls {
-    width: 1fr;
-    min-width: 30;
-    max-width: 50;
+    width: 5fr;
+    min-width: 34;
+    max-width: 56;
     padding: 1 2;
     border-right: solid $surface-lighten-2;
 }
 
 #export-preview {
-    width: 1fr;
+    width: 4fr;
     padding: 1 2;
 }
 
@@ -322,9 +367,27 @@ MainScreen {
     margin: 1 0 0 0;
 }
 
-#export-filter-section Select > SelectCurrent,
-#export-filter-section Select:disabled > SelectCurrent,
-#export-filter-section Select:disabled:focus > SelectCurrent {
+#export-ln-range-row {
+    height: auto;
+    margin-top: 1;
+}
+
+#export-ln-range-row Input {
+    width: 1fr;
+}
+
+#export-ln-range-row Input:first-of-type {
+    margin-right: 1;
+}
+
+#export-ln-range-row Input:disabled {
+    border: tall $surface-darken-2;
+    background: transparent;
+    color: $text;
+    text-opacity: 100%;
+}
+
+#export-filter-section Select > SelectCurrent {
     border: tall $surface-lighten-2;
     background: $surface;
     background-tint: transparent;
@@ -334,6 +397,19 @@ MainScreen {
 #export-filter-section Select:focus > SelectCurrent {
     border: tall $accent;
     background: $surface;
+    background-tint: transparent;
+    padding: 0 2;
+}
+
+#export-filter-section Select:disabled,
+#export-filter-section Select:disabled:focus {
+    background: transparent;
+}
+
+#export-filter-section Select:disabled > SelectCurrent,
+#export-filter-section Select:disabled:focus > SelectCurrent {
+    border: tall $surface-darken-2;
+    background: transparent;
     background-tint: transparent;
     padding: 0 2;
 }
@@ -366,9 +442,9 @@ MainScreen {
 #export-filter-section Select:disabled:focus > SelectCurrent Static#label,
 #export-filter-section Select:disabled:focus > SelectCurrent .arrow,
 #export-filter-section Select:disabled:focus > SelectCurrent.-has-value Static#label {
-    color: $text-muted;
+    color: $text;
     text-opacity: 100%;
-    background: $surface;
+    background: transparent;
     text-style: none;
 }
 
@@ -386,7 +462,6 @@ RadioSet:focus {
     border: none;
 }
 
-/* Remove focus/background highlight from export RadioButtons */
 #export-controls RadioSet {
     border: none;
     padding: 0;
@@ -416,14 +491,12 @@ RadioSet:focus {
     background: transparent;
 }
 
-/* Clear selected/highlighted row states that can render as a square block */
 #export-controls RadioButton.-selected,
 #export-controls RadioButton.-highlight,
 #export-controls RadioButton.-active {
     background: transparent;
 }
 
-/* Only style the toggle circle */
 #export-controls RadioSet RadioButton .toggle--button {
     color: $surface-lighten-2;
     background: transparent;
@@ -439,28 +512,22 @@ RadioSet:focus {
     background: transparent;
 }
 
-/* Keep cursor and selection semantics separate:
-   - selected value (-on): circle color
-   - navigation cursor (-selected): label color */
 #export-controls RadioSet:focus RadioButton.-selected .toggle--button {
     text-style: none;
 }
 
-/* Inactive label: muted color to match inactive toggle circle */
 #export-controls RadioButton .toggle--label {
     background: transparent;
     text-style: none;
     color: $text-muted;
 }
 
-/* Active label: accent color to match active toggle circle */
 #export-controls RadioButton.-on .toggle--label {
     background: transparent;
     text-style: none;
     color: $text;
 }
 
-/* Ensure focus/selected/highlight states don't add extra styling */
 #export-controls RadioButton:focus .toggle--label,
 #export-controls RadioButton.-selected .toggle--label,
 #export-controls RadioButton.-active .toggle--label {
@@ -474,18 +541,32 @@ RadioSet:focus {
 }
 
 RadioButton:disabled {
-    color: $text-disabled;
-    text-opacity: 50%;
+    color: $text;
+    text-opacity: 100%;
 }
 
 RadioButton:disabled .toggle--label {
-    color: $text-disabled;
-    text-opacity: 50%;
+    color: $text;
+    text-opacity: 100%;
+    background: transparent;
 }
 
 RadioButton:disabled .toggle--button {
-    color: $text-disabled;
-    text-opacity: 50%;
+    color: $surface-darken-2;
+    text-opacity: 100%;
+    background: transparent;
+}
+
+#export-controls RadioButton:disabled .toggle--label {
+    color: $text-muted;
+    text-opacity: 60%;
+    background: transparent;
+}
+
+#export-controls RadioButton:disabled .toggle--button {
+    color: $surface-darken-2;
+    text-opacity: 60%;
+    background: transparent;
 }
 
 #output-dir-input {
@@ -557,6 +638,11 @@ ActionMenuScreen {
 #action-menu-hint {
     color: $text-muted;
     margin-top: 1;
+}
+
+ThemePreviewPalette.--theme-preview-palette > Vertical {
+    width: 66;
+    max-width: 92%;
 }
 
 SubmissionScreen {
