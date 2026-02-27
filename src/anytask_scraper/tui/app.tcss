@@ -362,9 +362,41 @@ MainScreen {
     height: 1;
 }
 
-#export-filter-section Select {
+#export-filter-section OptionList {
     width: 100%;
-    margin: 1 0 0 0;
+    height: auto;
+    max-height: 8;
+    margin: 0 0 1 0;
+    border: tall $surface-lighten-2;
+    background: $surface;
+    padding: 0 1;
+}
+
+#export-filter-section OptionList > .option-list--option {
+    height: 1;
+    padding: 0;
+}
+
+#export-filter-section OptionList:focus {
+    border: tall $accent;
+}
+
+#export-filter-section OptionList > .option-list--option-highlighted {
+    background: transparent;
+    color: $text;
+    text-style: none;
+}
+
+#export-filter-section OptionList:focus > .option-list--option-highlighted {
+    background: transparent;
+    color: $text;
+    text-style: bold;
+}
+
+#export-filter-section OptionList:disabled,
+#export-filter-section OptionList:disabled:focus {
+    border: tall $surface-darken-2;
+    background: transparent;
 }
 
 #export-ln-range-row {
@@ -385,67 +417,6 @@ MainScreen {
     background: transparent;
     color: $text;
     text-opacity: 100%;
-}
-
-#export-filter-section Select > SelectCurrent {
-    border: tall $surface-lighten-2;
-    background: $surface;
-    background-tint: transparent;
-    padding: 0 2;
-}
-
-#export-filter-section Select:focus > SelectCurrent {
-    border: tall $accent;
-    background: $surface;
-    background-tint: transparent;
-    padding: 0 2;
-}
-
-#export-filter-section Select:disabled,
-#export-filter-section Select:disabled:focus {
-    background: transparent;
-}
-
-#export-filter-section Select:disabled > SelectCurrent,
-#export-filter-section Select:disabled:focus > SelectCurrent {
-    border: tall $surface-darken-2;
-    background: transparent;
-    background-tint: transparent;
-    padding: 0 2;
-}
-
-#export-filter-section Select > SelectCurrent Static#label,
-#export-filter-section Select > SelectCurrent .arrow {
-    color: $text;
-    text-opacity: 100%;
-    background: $surface;
-}
-
-#export-filter-section Select > SelectCurrent.-has-value Static#label {
-    color: $text;
-    text-opacity: 100%;
-    background: $surface;
-}
-
-#export-filter-section Select:focus > SelectCurrent Static#label,
-#export-filter-section Select:focus > SelectCurrent .arrow,
-#export-filter-section Select:focus > SelectCurrent.-has-value Static#label {
-    color: $accent;
-    text-opacity: 100%;
-    background: $surface;
-    text-style: bold;
-}
-
-#export-filter-section Select:disabled > SelectCurrent Static#label,
-#export-filter-section Select:disabled > SelectCurrent .arrow,
-#export-filter-section Select:disabled > SelectCurrent.-has-value Static#label,
-#export-filter-section Select:disabled:focus > SelectCurrent Static#label,
-#export-filter-section Select:disabled:focus > SelectCurrent .arrow,
-#export-filter-section Select:disabled:focus > SelectCurrent.-has-value Static#label {
-    color: $text;
-    text-opacity: 100%;
-    background: transparent;
-    text-style: none;
 }
 
 #export-btn {

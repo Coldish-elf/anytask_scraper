@@ -1,8 +1,33 @@
 # Быстрый старт
 
-## Логин и пароль
+## 1. Установка
 
-Для работы с Anytask нужен логин и пароль. Чтобы не вводить их каждый раз, создайте файл `credentials.json` в папке проекта:
+```bash
+git clone https://github.com/Coldish-elf/anytask_scraper
+cd anytask_scraper
+pip install -e .
+```
+
+Проверка:
+
+```bash
+anytask-scraper -h
+```
+
+## 2. Инициализация настроек
+
+```bash
+anytask-scraper settings init
+```
+
+Команда создаёт:
+
+- `.anytask_scraper_settings.json` - файл параметров по умолчанию
+- `credentials.json` - шаблон логина/пароля (если файла не было).
+
+## 3. Заполнение учётных данных
+
+Заполните `credentials.json`:
 
 ```json
 {
@@ -11,48 +36,47 @@
 }
 ```
 
-> Вы также можете использовать другой тип, подробнее
-в [конфигурации](Configuration.md).
+Поддерживаются и другие форматы файла (`key=value`, `key:value`, две строки `username`/`password`), подробнее в [Configuration](Configuration.md).
 
-## Инициализация настроек
-
-Создайте файл конфигурации с дефолтными настройками:
+## 4. Первый экспорт курса
 
 ```bash
-anytask-scraper settings init
+anytask-scraper course -c 12345 -f json -o ./output --show
 ```
 
-Это создаст файл `.anytask_scraper_settings.json`
+Что произойдёт:
 
-## Первые команды
+- выполнится вход на Anytask
+- будет загружена страница курса `12345`
+- данные сохранятся в `./output/course_12345.json`
+- таблица будет показана в терминале.
 
-### Получение информации о курсе
-
-Замените `12345` на ID вашего курса (можно найти в URL на anytask.org):
+## 5. Очередь преподавателя
 
 ```bash
-anytask-scraper course -c 12345
+anytask-scraper queue -c 12345 --deep -f markdown -o ./output
 ```
 
-Результат будет сохранен в JSON-файл в папке `output/`.
+`--deep` дополнительно загружает страницы решений (issue) и комментарии.
 
-### Просмотр очереди на проверку (для преподавателей)
-
-Если вы преподаватель, вы можете посмотреть очередь проверки:
+## 6. Ведомость
 
 ```bash
-anytask-scraper queue -c 12345 --show
+anytask-scraper gradebook -c 12345 -f csv -o ./output
 ```
 
-Флаг `--show` выведет красивую таблицу прямо в терминал.
+## 7. Автообнаружение курсов
 
-## Интерактивный режим (TUI)
+```bash
+anytask-scraper discover
+```
 
-Самый удобный способ работы - запустить текстовый интерфейс:
+## 8. Запуск TUI
 
 ```bash
 anytask-tui
+# или
+anytask-scraper tui
 ```
 
-При первом запуске вам предложат войти. Если вы настроили `credentials.json`, можно использовать их. 
-Подробнее в разделе **[TUI](TUI.md)**.
+Дальше используйте руководство [TUI](TUI.md).

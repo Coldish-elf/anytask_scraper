@@ -25,7 +25,6 @@ from textual.widgets import (
     OptionList,
     RadioButton,
     RadioSet,
-    Select,
     Static,
     TabbedContent,
     TabPane,
@@ -170,6 +169,50 @@ def _format_score(task: Task) -> str:
     return " ".join(parts) if parts else "-"
 
 
+ExportFilterValue = str | list[str]
+
+
+def _normalize_multi_values(value: object) -> set[str]:
+    """Normalize filter value into a set of string values."""
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        stripped = value.strip()
+        return {stripped} if stripped else set()
+    if isinstance(value, (list, tuple, set)):
+        result: set[str] = set()
+        for item in value:
+            if isinstance(item, str):
+                stripped = item.strip()
+                if stripped:
+                    result.add(stripped)
+        return result
+    return set()
+
+
+def _extract_filter_values(
+    filters: dict[str, ExportFilterValue] | None,
+    key: str,
+) -> set[str]:
+    """Get normalized set of selected values for a multi-select export filter."""
+    if not filters:
+        return set()
+    return _normalize_multi_values(filters.get(key))
+
+
+def _extract_filter_text(
+    filters: dict[str, ExportFilterValue] | None,
+    key: str,
+) -> str:
+    """Get single text value for freeform export filters."""
+    if not filters:
+        return ""
+    value = filters.get(key)
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
 class MainScreen(Screen[None]):
     """Main screen: left course pane + right TabbedContent (Tasks|Queue|Export)."""
 
@@ -223,6 +266,21 @@ class MainScreen(Screen[None]):
         self._help_visible = False
         self._export_preload_token = 0
         self._action_menu_open = False
+        self._export_filter_values: dict[str, list[str]] = {
+            "#export-filter-task": [],
+            "#export-filter-status": [],
+            "#export-filter-reviewer": [],
+        }
+        self._export_filter_selected: dict[str, set[str]] = {
+            "#export-filter-task": set(),
+            "#export-filter-status": set(),
+            "#export-filter-reviewer": set(),
+        }
+        self._export_filter_prompts: dict[str, str] = {
+            "#export-filter-task": "Task",
+            "#export-filter-status": "Status",
+            "#export-filter-reviewer": "Reviewer",
+        }
 
     def compose(self) -> ComposeResult:
         client = getattr(self.app, "client", None)
@@ -314,25 +372,28 @@ class MainScreen(Screen[None]):
                                 "Filter exported rows (optional)",
                                 classes="export-filter-desc",
                             )
-                            yield Select[str](
-                                [],
-                                allow_blank=True,
-                                value=Select.BLANK,
-                                prompt="Task",
+                            yield Label(
+                                "Task (All)",
+                                id="export-filter-task-label",
+                                classes="export-filter-label",
+                            )
+                            yield OptionList(
                                 id="export-filter-task",
                             )
-                            yield Select[str](
-                                [],
-                                allow_blank=True,
-                                value=Select.BLANK,
-                                prompt="Status",
+                            yield Label(
+                                "Status (All)",
+                                id="export-filter-status-label",
+                                classes="export-filter-label",
+                            )
+                            yield OptionList(
                                 id="export-filter-status",
                             )
-                            yield Select[str](
-                                [],
-                                allow_blank=True,
-                                value=Select.BLANK,
-                                prompt="Reviewer",
+                            yield Label(
+                                "Reviewer (All)",
+                                id="export-filter-reviewer-label",
+                                classes="export-filter-label",
+                            )
+                            yield OptionList(
                                 id="export-filter-reviewer",
                             )
                             with Horizontal(id="export-ln-range-row"):
@@ -653,6 +714,10 @@ class MainScreen(Screen[None]):
         elif zone_id == "#export-include-files-set":
             self.query_one("#export-include-files-set", RadioSet).focus()
             self._focus_left_pane = False
+        else:
+            with suppress(Exception):
+                self.query_one(zone_id).focus()
+                self._focus_left_pane = False
 
     def action_focus_left(self) -> None:
         self._focus_left_pane = True
@@ -1437,12 +1502,28 @@ class MainScreen(Screen[None]):
     def _format_changed(self, event: RadioSet.Changed) -> None:
         self._refresh_export_preview()
 
-    @on(Select.Changed, "#export-filter-task")
-    @on(Select.Changed, "#export-filter-status")
-    @on(Select.Changed, "#export-filter-reviewer")
-    def _export_filter_changed(self, event: Select.Changed) -> None:
-        """Handle row filter changes - refresh preview."""
+    @on(OptionList.OptionSelected, "#export-filter-task")
+    @on(OptionList.OptionSelected, "#export-filter-status")
+    @on(OptionList.OptionSelected, "#export-filter-reviewer")
+    def _export_filter_changed(self, event: OptionList.OptionSelected) -> None:
+        """Toggle selected multi-filter value and refresh preview."""
         event.stop()
+        option_list = event.option_list
+        widget_id = f"#{option_list.id}" if option_list.id else ""
+        if not widget_id:
+            return
+        options = self._export_filter_values.get(widget_id, [])
+        idx = event.option_index
+        if idx < 0 or idx >= len(options):
+            return
+        value = options[idx]
+        selected = self._export_filter_selected.setdefault(widget_id, set())
+        if value in selected:
+            selected.remove(value)
+        else:
+            selected.add(value)
+        self._rebuild_export_filter_option_list(option_list, keep_highlight=idx)
+        self._refresh_export_filter_label(widget_id, enabled=not option_list.disabled)
         self._refresh_export_preview()
 
     @on(Input.Changed, "#export-ln-from")
@@ -1453,35 +1534,37 @@ class MainScreen(Screen[None]):
         self._refresh_export_preview()
 
     def _update_export_filters(self) -> None:
-        """Update row filter dropdowns based on current export type."""
+        """Update row filter option lists based on current export type."""
         try:
-            task_select = self.query_one("#export-filter-task", Select)
-            status_select = self.query_one("#export-filter-status", Select)
-            reviewer_select = self.query_one("#export-filter-reviewer", Select)
+            task_select = self.query_one("#export-filter-task", OptionList)
+            status_select = self.query_one("#export-filter-status", OptionList)
+            reviewer_select = self.query_one("#export-filter-reviewer", OptionList)
         except Exception:
             return
 
         export_type = self._get_current_export_type()
-        prev_task = task_select.value
-        prev_status = status_select.value
-        prev_reviewer = reviewer_select.value
+        prev_task = self._get_selected_export_filter_values("#export-filter-task")
+        prev_status = self._get_selected_export_filter_values("#export-filter-status")
+        prev_reviewer = self._get_selected_export_filter_values("#export-filter-reviewer")
 
         if export_type in ("queue-export-radio", "subs-export-radio"):
-            task_select.prompt = "Task"
-            status_select.prompt = "Status"
-            reviewer_select.prompt = "Reviewer"
+            self._export_filter_prompts["#export-filter-task"] = "Task"
+            self._export_filter_prompts["#export-filter-status"] = "Status"
+            self._export_filter_prompts["#export-filter-reviewer"] = "Reviewer"
         elif export_type == "tasks-export-radio":
-            task_select.prompt = "Title"
-            status_select.prompt = "Section" if self.is_teacher_view else "Status"
-            reviewer_select.prompt = "N/A"
+            self._export_filter_prompts["#export-filter-task"] = "Title"
+            self._export_filter_prompts["#export-filter-status"] = (
+                "Section" if self.is_teacher_view else "Status"
+            )
+            self._export_filter_prompts["#export-filter-reviewer"] = "N/A"
         elif export_type == "gb-export-radio":
-            task_select.prompt = "Group"
-            status_select.prompt = "N/A"
-            reviewer_select.prompt = "Teacher"
+            self._export_filter_prompts["#export-filter-task"] = "Group"
+            self._export_filter_prompts["#export-filter-status"] = "N/A"
+            self._export_filter_prompts["#export-filter-reviewer"] = "Teacher"
         else:
-            task_select.prompt = "Task"
-            status_select.prompt = "Status"
-            reviewer_select.prompt = "Reviewer"
+            self._export_filter_prompts["#export-filter-task"] = "Task"
+            self._export_filter_prompts["#export-filter-status"] = "Status"
+            self._export_filter_prompts["#export-filter-reviewer"] = "Reviewer"
 
         try:
             files_radio = self.query_one("#files-radio", RadioButton)
@@ -1518,7 +1601,7 @@ class MainScreen(Screen[None]):
                 prev_status,
                 enabled=bool(sections if self.is_teacher_view else statuses),
             )
-            self._set_export_filter_options(reviewer_select, [], Select.BLANK, enabled=False)
+            self._set_export_filter_options(reviewer_select, [], set(), enabled=False)
         elif export_type in ("queue-export-radio", "subs-export-radio"):
             tasks = sorted({e.task_title for e in self.all_queue_entries if e.task_title})
             statuses = sorted({e.status_name for e in self.all_queue_entries if e.status_name})
@@ -1552,7 +1635,7 @@ class MainScreen(Screen[None]):
                 prev_task,
                 enabled=bool(groups),
             )
-            self._set_export_filter_options(status_select, [], Select.BLANK, enabled=False)
+            self._set_export_filter_options(status_select, [], set(), enabled=False)
             self._set_export_filter_options(
                 reviewer_select,
                 [(t, t) for t in teachers],
@@ -1560,34 +1643,87 @@ class MainScreen(Screen[None]):
                 enabled=bool(teachers),
             )
         else:
-            self._set_export_filter_options(task_select, [], Select.BLANK, enabled=False)
-            self._set_export_filter_options(status_select, [], Select.BLANK, enabled=False)
-            self._set_export_filter_options(reviewer_select, [], Select.BLANK, enabled=False)
+            self._set_export_filter_options(task_select, [], set(), enabled=False)
+            self._set_export_filter_options(status_select, [], set(), enabled=False)
+            self._set_export_filter_options(reviewer_select, [], set(), enabled=False)
 
     def _set_export_filter_options(
         self,
-        select: Select[str],
+        option_list: OptionList,
         options: list[tuple[str, str]],
         previous_value: object,
         *,
         enabled: bool,
     ) -> None:
-        """Set options and keep previous selection if still available."""
-        select.set_options(options)
+        """Set options and keep previous multi-selection where possible."""
+        widget_id = f"#{option_list.id}" if option_list.id else ""
+        if not widget_id:
+            return
+
+        values = [value for _, value in options]
+        selected = _normalize_multi_values(previous_value)
+        selected = {value for value in values if value in selected}
+
+        self._export_filter_values[widget_id] = values
+        self._export_filter_selected[widget_id] = selected if enabled else set()
+
+        option_list.disabled = not enabled
+        self._rebuild_export_filter_option_list(option_list)
+        self._refresh_export_filter_label(widget_id, enabled=enabled)
+
         if not enabled:
-            select.disabled = True
-            select.value = Select.BLANK
             focused = self.focused
-            if focused is not None and (focused is select or focused in select.walk_children()):
+            if focused is option_list:
                 with suppress(Exception):
                     self.query_one("#export-type-set", RadioSet).focus()
+
+    def _rebuild_export_filter_option_list(
+        self,
+        option_list: OptionList,
+        *,
+        keep_highlight: int | None = None,
+    ) -> None:
+        """Render option list values with checkboxes for current selection."""
+        widget_id = f"#{option_list.id}" if option_list.id else ""
+        if not widget_id:
             return
-        select.disabled = False
-        values = {value for _, value in options}
-        if previous_value is not Select.BLANK and str(previous_value) in values:
-            select.value = str(previous_value)
+        values = self._export_filter_values.get(widget_id, [])
+        selected = self._export_filter_selected.get(widget_id, set())
+        option_list.clear_options()
+        for idx, value in enumerate(values):
+            check = "[x]" if value in selected else "[ ]"
+            label = Text()
+            label.append(f"{check} {value}")
+            option_list.add_option(Option(label, id=str(idx)))
+        if not values:
+            return
+        if keep_highlight is not None and 0 <= keep_highlight < len(values):
+            option_list.highlighted = keep_highlight
+            return
+        if option_list.highlighted is None:
+            option_list.highlighted = 0
+
+    def _refresh_export_filter_label(self, widget_id: str, *, enabled: bool) -> None:
+        """Update filter label with prompt and multi-selection state."""
+        prompt = self._export_filter_prompts.get(widget_id, "Filter")
+        selected_count = len(self._export_filter_selected.get(widget_id, set()))
+        if not enabled:
+            suffix = "N/A"
+        elif selected_count == 0:
+            suffix = "All"
+        elif selected_count == 1:
+            suffix = "1 selected"
         else:
-            select.value = Select.BLANK
+            suffix = f"{selected_count} selected"
+        label_id = f"#{widget_id.removeprefix('#')}-label"
+        with suppress(Exception):
+            self.query_one(label_id, Label).update(f"{prompt} ({suffix})")
+
+    def _get_selected_export_filter_values(self, widget_id: str) -> list[str]:
+        """Return selected values for a filter in visible option order."""
+        values = self._export_filter_values.get(widget_id, [])
+        selected = self._export_filter_selected.get(widget_id, set())
+        return [value for value in values if value in selected]
 
     def _set_export_filters_loading_state(self) -> None:
         """Disable row filters while related data is preloading."""
@@ -1597,8 +1733,9 @@ class MainScreen(Screen[None]):
             "#export-filter-reviewer",
         ):
             try:
-                sel = self.query_one(wid, Select)
+                sel = self.query_one(wid, OptionList)
                 sel.disabled = True
+                self._refresh_export_filter_label(wid, enabled=False)
             except Exception:
                 continue
 
@@ -1612,31 +1749,31 @@ class MainScreen(Screen[None]):
             return bool(self.all_gradebook_groups)
         return True
 
-    def _get_current_export_filters(self) -> dict[str, str]:
-        """Get current row filter values."""
-        filters: dict[str, str] = {}
+    def _get_current_export_filters(self) -> dict[str, ExportFilterValue]:
+        """Get current export filter values."""
+        filters: dict[str, ExportFilterValue] = {}
         try:
             export_type = self._get_current_export_type()
-            task_val = self.query_one("#export-filter-task", Select).value
-            status_val = self.query_one("#export-filter-status", Select).value
-            reviewer_val = self.query_one("#export-filter-reviewer", Select).value
+            task_vals = self._get_selected_export_filter_values("#export-filter-task")
+            status_vals = self._get_selected_export_filter_values("#export-filter-status")
+            reviewer_vals = self._get_selected_export_filter_values("#export-filter-reviewer")
             if export_type == "tasks-export-radio":
-                if task_val is not Select.BLANK:
-                    filters["task"] = str(task_val)
-                if status_val is not Select.BLANK:
-                    filters["section" if self.is_teacher_view else "status"] = str(status_val)
+                if task_vals:
+                    filters["task"] = task_vals
+                if status_vals:
+                    filters["section" if self.is_teacher_view else "status"] = status_vals
             elif export_type in ("queue-export-radio", "subs-export-radio"):
-                if task_val is not Select.BLANK:
-                    filters["task"] = str(task_val)
-                if status_val is not Select.BLANK:
-                    filters["status"] = str(status_val)
-                if reviewer_val is not Select.BLANK:
-                    filters["reviewer"] = str(reviewer_val)
+                if task_vals:
+                    filters["task"] = task_vals
+                if status_vals:
+                    filters["status"] = status_vals
+                if reviewer_vals:
+                    filters["reviewer"] = reviewer_vals
             elif export_type == "gb-export-radio":
-                if task_val is not Select.BLANK:
-                    filters["group"] = str(task_val)
-                if reviewer_val is not Select.BLANK:
-                    filters["teacher"] = str(reviewer_val)
+                if task_vals:
+                    filters["group"] = task_vals
+                if reviewer_vals:
+                    filters["teacher"] = reviewer_vals
             if export_type != "tasks-export-radio":
                 ln_from = self.query_one("#export-ln-from", Input).value.strip()
                 ln_to = self.query_one("#export-ln-to", Input).value.strip()
@@ -1855,15 +1992,23 @@ class MainScreen(Screen[None]):
         max_items = 2
         included = self._get_included_columns()
         filters = self._get_current_export_filters()
+        task_filters = _extract_filter_values(filters, "task")
+        status_filters = _extract_filter_values(filters, "status")
+        section_filters = _extract_filter_values(filters, "section")
+        reviewer_filters = _extract_filter_values(filters, "reviewer")
+        group_filters = _extract_filter_values(filters, "group")
+        teacher_filters = _extract_filter_values(filters, "teacher")
+        last_name_from = _extract_filter_text(filters, "last_name_from")
+        last_name_to = _extract_filter_text(filters, "last_name_to")
 
         if export_type == "tasks-export-radio":
             tasks = list(self.all_tasks)
-            if filters.get("task"):
-                tasks = [t for t in tasks if t.title == filters["task"]]
-            if filters.get("section"):
-                tasks = [t for t in tasks if t.section == filters["section"]]
-            if filters.get("status"):
-                tasks = [t for t in tasks if t.status == filters["status"]]
+            if task_filters:
+                tasks = [t for t in tasks if t.title in task_filters]
+            if section_filters:
+                tasks = [t for t in tasks if t.section in section_filters]
+            if status_filters:
+                tasks = [t for t in tasks if t.status in status_filters]
             if not tasks:
                 return "[dim]No tasks available[/dim]"
             return self._preview_tasks(
@@ -1875,19 +2020,20 @@ class MainScreen(Screen[None]):
             if not q_entries:
                 cache = self.app.queue_cache  # type: ignore[attr-defined]
                 q_entries = list(cache.get(course_id, ReviewQueue(course_id=course_id)).entries)
-            if filters.get("task"):
-                q_entries = [e for e in q_entries if e.task_title == filters["task"]]
-            if filters.get("status"):
-                q_entries = [e for e in q_entries if e.status_name == filters["status"]]
-            if filters.get("reviewer"):
-                q_entries = [e for e in q_entries if e.responsible_name == filters["reviewer"]]
-            if filters.get("last_name_from") or filters.get("last_name_to"):
+            if task_filters:
+                q_entries = [e for e in q_entries if e.task_title in task_filters]
+            if status_filters:
+                q_entries = [e for e in q_entries if e.status_name in status_filters]
+            if reviewer_filters:
+                q_entries = [e for e in q_entries if e.responsible_name in reviewer_filters]
+            if last_name_from or last_name_to:
                 q_entries = [
-                    e for e in q_entries
+                    e
+                    for e in q_entries
                     if last_name_in_range(
                         e.student_name,
-                        filters.get("last_name_from", ""),
-                        filters.get("last_name_to", ""),
+                        last_name_from,
+                        last_name_to,
                     )
                 ]
             if not q_entries:
@@ -1903,13 +2049,11 @@ class MainScreen(Screen[None]):
                 cached = cache.get(course_id)
                 if cached is not None:
                     groups = list(cached.groups)
-            if filters.get("group"):
-                groups = [g for g in groups if g.group_name == filters["group"]]
-            if filters.get("teacher"):
-                groups = [g for g in groups if g.teacher_name == filters["teacher"]]
-            if filters.get("last_name_from") or filters.get("last_name_to"):
-                ln_from = filters.get("last_name_from", "")
-                ln_to = filters.get("last_name_to", "")
+            if group_filters:
+                groups = [g for g in groups if g.group_name in group_filters]
+            if teacher_filters:
+                groups = [g for g in groups if g.teacher_name in teacher_filters]
+            if last_name_from or last_name_to:
                 groups = [
                     GradebookGroup(
                         group_name=g.group_name,
@@ -1918,8 +2062,9 @@ class MainScreen(Screen[None]):
                         task_titles=list(g.task_titles),
                         max_scores=dict(g.max_scores),
                         entries=[
-                            e for e in g.entries
-                            if last_name_in_range(e.student_name, ln_from, ln_to)
+                            e
+                            for e in g.entries
+                            if last_name_in_range(e.student_name, last_name_from, last_name_to)
                         ],
                     )
                     for g in groups
@@ -1942,19 +2087,20 @@ class MainScreen(Screen[None]):
             if not sub_entries:
                 cache = self.app.queue_cache  # type: ignore[attr-defined]
                 sub_entries = list(cache.get(course_id, ReviewQueue(course_id=course_id)).entries)
-            if filters.get("task"):
-                sub_entries = [e for e in sub_entries if e.task_title == filters["task"]]
-            if filters.get("status"):
-                sub_entries = [e for e in sub_entries if e.status_name == filters["status"]]
-            if filters.get("reviewer"):
-                sub_entries = [e for e in sub_entries if e.responsible_name == filters["reviewer"]]
-            if filters.get("last_name_from") or filters.get("last_name_to"):
+            if task_filters:
+                sub_entries = [e for e in sub_entries if e.task_title in task_filters]
+            if status_filters:
+                sub_entries = [e for e in sub_entries if e.status_name in status_filters]
+            if reviewer_filters:
+                sub_entries = [e for e in sub_entries if e.responsible_name in reviewer_filters]
+            if last_name_from or last_name_to:
                 sub_entries = [
-                    e for e in sub_entries
+                    e
+                    for e in sub_entries
                     if last_name_in_range(
                         e.student_name,
-                        filters.get("last_name_from", ""),
-                        filters.get("last_name_to", ""),
+                        last_name_from,
+                        last_name_to,
                     )
                 ]
             if not sub_entries:
@@ -2422,7 +2568,7 @@ class MainScreen(Screen[None]):
         fmt: str,
         output_path: Path,
         export_type: str = "tasks-export-radio",
-        filters: dict[str, str] | None = None,
+        filters: dict[str, ExportFilterValue] | None = None,
         columns: list[str] | None = None,
         filename: str | None = None,
         include_files: bool = False,
@@ -2430,6 +2576,14 @@ class MainScreen(Screen[None]):
         try:
             output_path.mkdir(parents=True, exist_ok=True)
             course_id = self._selected_course_id or 0
+            task_filters = _extract_filter_values(filters, "task")
+            status_filters = _extract_filter_values(filters, "status")
+            section_filters = _extract_filter_values(filters, "section")
+            reviewer_filters = _extract_filter_values(filters, "reviewer")
+            group_filters = _extract_filter_values(filters, "group")
+            teacher_filters = _extract_filter_values(filters, "teacher")
+            last_name_from = _extract_filter_text(filters, "last_name_from")
+            last_name_to = _extract_filter_text(filters, "last_name_to")
 
             if export_type == "tasks-export-radio":
                 course = self.app.current_course  # type: ignore[attr-defined]
@@ -2441,12 +2595,12 @@ class MainScreen(Screen[None]):
 
                 tasks = list(course.tasks)
 
-                if filters and filters.get("task"):
-                    tasks = [t for t in tasks if t.title == filters["task"]]
-                if filters and filters.get("section"):
-                    tasks = [t for t in tasks if t.section == filters["section"]]
-                if filters and filters.get("status"):
-                    tasks = [t for t in tasks if t.status == filters["status"]]
+                if task_filters:
+                    tasks = [t for t in tasks if t.title in task_filters]
+                if section_filters:
+                    tasks = [t for t in tasks if t.section in section_filters]
+                if status_filters:
+                    tasks = [t for t in tasks if t.status in status_filters]
 
                 filtered_course = Course(
                     course_id=course.course_id,
@@ -2481,22 +2635,22 @@ class MainScreen(Screen[None]):
                 queue = self._load_queue_for_export(course_id)
 
                 entries = list(queue.entries)
-                if filters:
-                    if filters.get("task"):
-                        entries = [e for e in entries if e.task_title == filters["task"]]
-                    if filters.get("status"):
-                        entries = [e for e in entries if e.status_name == filters["status"]]
-                    if filters.get("reviewer"):
-                        entries = [e for e in entries if e.responsible_name == filters["reviewer"]]
-                    if filters.get("last_name_from") or filters.get("last_name_to"):
-                        entries = [
-                            e for e in entries
-                            if last_name_in_range(
-                                e.student_name,
-                                filters.get("last_name_from", ""),
-                                filters.get("last_name_to", ""),
-                            )
-                        ]
+                if task_filters:
+                    entries = [e for e in entries if e.task_title in task_filters]
+                if status_filters:
+                    entries = [e for e in entries if e.status_name in status_filters]
+                if reviewer_filters:
+                    entries = [e for e in entries if e.responsible_name in reviewer_filters]
+                if last_name_from or last_name_to:
+                    entries = [
+                        e
+                        for e in entries
+                        if last_name_in_range(
+                            e.student_name,
+                            last_name_from,
+                            last_name_to,
+                        )
+                    ]
 
                 filtered_queue = ReviewQueue(
                     course_id=queue.course_id,
@@ -2529,22 +2683,22 @@ class MainScreen(Screen[None]):
                 queue = self._load_queue_for_export(course_id)
                 entries = list(queue.entries)
 
-                if filters:
-                    if filters.get("task"):
-                        entries = [e for e in entries if e.task_title == filters["task"]]
-                    if filters.get("status"):
-                        entries = [e for e in entries if e.status_name == filters["status"]]
-                    if filters.get("reviewer"):
-                        entries = [e for e in entries if e.responsible_name == filters["reviewer"]]
-                    if filters.get("last_name_from") or filters.get("last_name_to"):
-                        entries = [
-                            e for e in entries
-                            if last_name_in_range(
-                                e.student_name,
-                                filters.get("last_name_from", ""),
-                                filters.get("last_name_to", ""),
-                            )
-                        ]
+                if task_filters:
+                    entries = [e for e in entries if e.task_title in task_filters]
+                if status_filters:
+                    entries = [e for e in entries if e.status_name in status_filters]
+                if reviewer_filters:
+                    entries = [e for e in entries if e.responsible_name in reviewer_filters]
+                if last_name_from or last_name_to:
+                    entries = [
+                        e
+                        for e in entries
+                        if last_name_in_range(
+                            e.student_name,
+                            last_name_from,
+                            last_name_to,
+                        )
+                    ]
 
                 accessible_entries = [e for e in entries if e.has_issue_access and e.issue_url]
                 if not accessible_entries:
@@ -2648,29 +2802,27 @@ class MainScreen(Screen[None]):
                 gradebook = self._load_gradebook_for_export(course_id)
 
                 groups = list(gradebook.groups)
-                if filters:
-                    if filters.get("group"):
-                        groups = [g for g in groups if g.group_name == filters["group"]]
-                    if filters.get("teacher"):
-                        groups = [g for g in groups if g.teacher_name == filters["teacher"]]
-                    if filters.get("last_name_from") or filters.get("last_name_to"):
-                        ln_from = filters.get("last_name_from", "")
-                        ln_to = filters.get("last_name_to", "")
-                        groups = [
-                            GradebookGroup(
-                                group_name=g.group_name,
-                                group_id=g.group_id,
-                                teacher_name=g.teacher_name,
-                                task_titles=list(g.task_titles),
-                                max_scores=dict(g.max_scores),
-                                entries=[
-                                e for e in g.entries
-                                if last_name_in_range(e.student_name, ln_from, ln_to)
+                if group_filters:
+                    groups = [g for g in groups if g.group_name in group_filters]
+                if teacher_filters:
+                    groups = [g for g in groups if g.teacher_name in teacher_filters]
+                if last_name_from or last_name_to:
+                    groups = [
+                        GradebookGroup(
+                            group_name=g.group_name,
+                            group_id=g.group_id,
+                            teacher_name=g.teacher_name,
+                            task_titles=list(g.task_titles),
+                            max_scores=dict(g.max_scores),
+                            entries=[
+                                e
+                                for e in g.entries
+                                if last_name_in_range(e.student_name, last_name_from, last_name_to)
                             ],
-                            )
-                            for g in groups
-                        ]
-                        groups = [g for g in groups if g.entries]
+                        )
+                        for g in groups
+                    ]
+                    groups = [g for g in groups if g.entries]
 
                 filtered_gradebook = Gradebook(
                     course_id=gradebook.course_id,

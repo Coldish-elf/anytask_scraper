@@ -1,20 +1,12 @@
 # Anytask Scraper
 
-**Anytask Scraper** - инструмент для сбора данных с [anytask.org](https://anytask.org/).
+anytask-scraper - CLI, TUI и Python-библиотека для [anytask.org](https://anytask.org/).
 
-Проект представляет **CLI** и **TUI**. Также может использоваться как **Python-библиотека**.
+## Требования
 
-## Возможности
-
-- **TUI**: Интерактивный интерфейс для просмотра задач, очереди и оценок.
-- **Студентам**: Просмотр дедлайнов, оценок и статусов задач.
-- **Преподавателям**: Работа с очередью проверки, скачивание решений (включая Colab), экспорт ведомости.
-- **Экспорт**: Поддержка JSON, CSV, Markdown.
-- **Авторизация**: Поддержка логина/пароля и сессий (cookies).
+Нужен Python `3.10+`.
 
 ## Установка
-
-Требуется **Python 3.10+**.
 
 ```bash
 git clone https://github.com/Coldish-elf/anytask_scraper
@@ -22,53 +14,44 @@ cd anytask_scraper
 pip install -e .
 ```
 
-## Быстрый старт
-
-### Проверка
-
-После установки убедитесь, что все работает корректно, вызвав:
+## Быстрая проверка
 
 ```bash
-anytask-scraper --help
-```
-
-Или запустите TUI:
-
-```bash
+anytask-scraper -h
+# или быстрый старт TUI
 anytask-tui
 ```
 
-### CLI (Командная строка)
+## Базовый сценарий CLI
 
-1. **Инициализация настроек** (рекомендуется):
+1. Инициализируйте настройки:
 
-    ```bash
-    anytask-scraper settings init
-    ```
+```bash
+anytask-scraper settings init
+```
 
-    Это создаст файл настроек и шаблон для логина/пароля.
+2. Заполните `credentials.json` (логин/пароль).
 
-2. **Заполните логин и пароль**
+3. Получите данные по курсу:
 
-3. **Получение задач курса**:
+```bash
+anytask-scraper course -c 12345 --show
+```
 
-    ```bash
-    anytask-scraper course -c 12345 --show
-    ```
+4. Получите очередь:
 
-4. **Просмотр очереди на проверку**:
-
-    ```bash
-    anytask-scraper queue -c 12345 --show
-    ```
+```bash
+anytask-scraper queue -c 12345 --show
+```
 
 ## Документация
 
-- **[QuickStart](docs/QuickStart.md)** - Быстрый старт.
-- **[CLI](docs/CLI.md)** - Справочник команд.
-- **[TUI](docs/TUI.md)** - Управление интерфейсом.
-- **[Configuration](docs/Configuration.md)** - Настройки и авторизация.
-- **[Export formats](docs/Export_formats.md)** - Форматы экспорта.
-- **[Library Reference](docs/Library_Reference.md)** - Использование в Python-скриптах.
-- **[Roadmap](docs/roadmap.md)** - План разработки.
-- **[Changelog](docs/CHANGELOG.md)** - История изменений.
+- [Быстрый старт](docs/QuickStart.md)
+- [CLI](docs/CLI.md)
+- [TUI](docs/TUI.md)
+- [Конфигурация](docs/Configuration.md)
+- [Форматы экспорта](docs/Export_Formats.md)
+- [Архитектура](docs/Architecture.md)
+- [Справочник библиотеки](docs/Library_Reference.md)
+- [Roadmap](docs/roadmap.md)
+- [Changelog](docs/CHANGELOG.md)

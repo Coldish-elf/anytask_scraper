@@ -1,10 +1,20 @@
 # Конфигурация
 
+## Источники параметров и приоритет
+
+Для CLI параметры берутся из нескольких источников в таком порядке:
+
+1. Явные аргументы командной строки.
+2. Файл настроек (`--settings-file`, по умолчанию `.anytask_scraper_settings.json`).
+3. Встроенные значения по умолчанию.
+
+Если параметр передан в CLI, он перекрывает значение из файла.
+
 ## Файл настроек
 
-Проект использует файл настроек `.anytask_scraper_settings.json` для хранения путей и параметров по умолчанию. Этот файл обычно находится в текущей рабочей директории.
+Файл по умолчанию: `.anytask_scraper_settings.json`.
 
-Пример содержимого:
+Пример:
 
 ```json
 {
@@ -19,106 +29,109 @@
 }
 ```
 
-### Описание параметров
+Описание ключей:
 
-| Ключ                 | Тип     | Описание                                                                 |
-| -------------------- | ------- | ------------------------------------------------------------------------ |
-| `credentials_file`   | string  | Путь к файлу с логином и паролем.                                        |
-| `session_file`       | string  | Путь к файлу cookies (сессии).                                           |
-| `status_mode`        | string  | Режим отображения статуса: `"all"` (все) или `"errors"` (только ошибки). |
-| `default_output`     | string  | Папка по умолчанию для экспорта данных.                                  |
-| `save_session`       | boolean | Автоматически сохранять сессию после команд.                             |
-| `refresh_session`    | boolean | Принудительно обновлять сессию (игнорировать сохраненную).               |
-| `auto_login_session` | boolean | Автоматически входить в TUI, используя сохраненную сессию.               |
-| `debug`              | boolean | Включить режим отладки (расширенное логирование).                        |
+| Ключ | Тип | Назначение |
+| --- | --- | --- |
+| `credentials_file` | `string` | Файл с `username`/`password`. |
+| `session_file` | `string` | Файл cookie-сессии. |
+| `status_mode` | `all` или `errors` | Показывать все статусные сообщения CLI или только ошибки. |
+| `default_output` | `string` | Базовая папка экспорта для `course`/`queue`/`gradebook`. |
+| `save_session` | `boolean` | Сохранять сессию после команды (если задан `session_file`). |
+| `refresh_session` | `boolean` | Игнорировать сохранённую сессию и выполнять новый login. |
+| `auto_login_session` | `boolean` | Автовход в TUI по сессионному файлу. |
+| `debug` | `boolean` | Режим подробного логирования. |
 
-## Управление настройками (CLI)
+## Команда `settings`
 
-Вы можете управлять настройками через команду `settings`.
-
-### Инициализация
-
-Создать файл настроек с рекомендуемыми значениями и шаблон `credentials.json`:
+### `settings init`
 
 ```bash
 anytask-scraper settings init
 ```
 
-### Просмотр текущих настроек
+Создаёт/обновляет файл настроек рекомендуемыми значениями и создаёт шаблон `credentials.json`, если файла ещё нет.
+
+### `settings show`
 
 ```bash
 anytask-scraper settings show
 ```
 
-### Изменение настроек
+Печатает сохранённый JSON настроек.
 
-Изменить один или несколько параметров:
+### `settings set`
 
 ```bash
-anytask-scraper settings set --default-output ./my_data --status-mode all
+anytask-scraper settings set --default-output ./output --status-mode all
 anytask-scraper settings set --debug
+anytask-scraper settings set --no-save-session
 ```
 
-### Очистка настроек
+Поддерживаемые флаги:
 
-Вернуть дефолтное значение:
+- `--credentials-file`
+- `--session-file`
+- `--status-mode all|errors`
+- `--default-output`
+- `--save-session / --no-save-session`
+- `--refresh-session / --no-refresh-session`
+- `--auto-login-session / --no-auto-login-session`
+- `--debug / --no-debug`
+
+### `settings clear`
 
 ```bash
-anytask-scraper settings clear session_file
-```
-
-Удалить вообще все настройки:
-
-```bash
+anytask-scraper settings clear session_file debug
 anytask-scraper settings clear
 ```
 
-## Файл учетных данных (credentials)
+С ключами очищает только перечисленные поля, без ключей очищает весь файл настроек.
 
-Для автоматического входа создайте файл `credentials.json` (или `.env`).
+## Файл credentials
 
-**Формат JSON (рекомендуемый):**
+Поддерживаются форматы.
+
+Формат JSON:
 
 ```json
 {
   "username": "ivanov",
-  "password": "secret_password"
+  "password": "secret"
 }
 ```
 
-**Формат Key-Value:**
+Формат `key=value` или `key:value`:
 
 ```text
 username=ivanov
-password=secret_password
+password=secret
 ```
 
-**Простой текстовый формат:**
+Двухстрочный fallback:
 
 ```text
 ivanov
-secret_password
+secret
 ```
 
-## Использование переменных окружения
+## Авторизация и сессия
 
-Приложение напрямую не считывает переменные окружения (env vars), но вы можете использовать их в командной строке (особенности вашего shell).
+CLI работает так:
 
-Пример запуска через `.env`:
+1. Если указан `session_file` и не включён `refresh_session`, пробует загрузить cookie-сессию.
+2. Если сессия не подошла, выполняет login по логину/паролю.
+3. По завершении (если включено `save_session`) сохраняет сессию в файл.
 
-1. Создайте файл `.env`:
+Если сохранённая сессия протухла во время запроса, клиент делает повторную авторизацию автоматически (при наличии credentials).
 
-   ```env
-   ANYTASK_USERNAME=your_login
-   ANYTASK_PASSWORD=your_password
-   ```
+## Логи
 
-2. Запустите с подстановкой переменных:
+Глобальные флаги:
 
-   ```bash
-   export $(cat .env | xargs)
-   # или
-   # source .env
+```bash
+anytask-scraper --debug --log-file ./logs/anytask.log course -c 12345
+```
 
-   anytask-scraper -u "$ANYTASK_USERNAME" -p "$ANYTASK_PASSWORD" course -c 12345
-   ```
+- `--debug` включает уровень `DEBUG`.
+- `--log-file` дублирует вывод в файл.
