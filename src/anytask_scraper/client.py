@@ -36,8 +36,8 @@ class LoginError(Exception):
 class WriteError(Exception):
     pass
 
-class AnytaskClient:
 
+class AnytaskClient:
     def __init__(self, username: str = "", password: str = "") -> None:
         self.username = username
         self.password = password

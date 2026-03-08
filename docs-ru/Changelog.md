@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0] - 2026-03-08
+
+### Изменено
+
+- Основной README теперь на английском; русская версия вынесена в README.ru.md.
+- Расширен pyproject.toml.
+- GitHub Actions CI теперь кэширует pip, явно обновляет pip, запускает проверки для tests/ и валидирует сборку через python -m build.
+- Шаблон PR теперь включает проверки форматирования и сборки пакета.
+- Регистрация mixin-обработчиков в MainScreen теперь безопасно переиспользует унаследованные decorated handlers через локальный fallback mapping.
+- Рефакторинг API client, API server, TUI mixin-модулей и filter bar widgets.
+- Docker build context для локальных файлов состояния.
+
 ## [0.10.2] - 2026-03-07
 
 ### Исправлено

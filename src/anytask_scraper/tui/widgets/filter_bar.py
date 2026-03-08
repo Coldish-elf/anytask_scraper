@@ -10,10 +10,8 @@ from textual.widgets import Input, Select
 
 
 class TaskFilterBar(Widget):
-
     @dataclass
     class Changed(Message):
-
         text: str
         status: str
         section: str
@@ -138,10 +136,8 @@ class TaskFilterBar(Widget):
 
 
 class QueueFilterBar(Widget):
-
     @dataclass
     class Changed(Message):
-
         text: str
         student: str
         task: str
@@ -308,10 +304,8 @@ class QueueFilterBar(Widget):
 
 
 class GradebookFilterBar(Widget):
-
     @dataclass
     class Changed(Message):
-
         text: str
         group: str
         teacher: str

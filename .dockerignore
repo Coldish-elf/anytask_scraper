@@ -8,6 +8,10 @@ __pycache__
 tests/
 docs/
 docs-en/
+docs-ru/
+.github
 *.egg-info
 .anytask_session.json
+.anytask_scraper_settings.json
+credentials.json
 queue_db.json

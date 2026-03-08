@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0] - 2026-03-08
+
+### Changed
+
+- Main README is now in English; separate Russian README added as README.ru.md.
+- pyproject.toml metadata expanded.
+- GitHub Actions CI now caches pip, upgrades pip explicitly, runs checks against tests/, and validates builds with python -m build.
+- PR template now includes formatting and packaging checks.
+- MainScreen mixin handler registration now reuses inherited decorated handlers through a local fallback mapping.
+- Minor structural cleanup in the API client, API server, TUI mixins, and filter bar widgets.
+- Docker build context filtering tightened for local state files.
+
 ## [0.10.2] - 2026-03-07
 
 ### Fixed

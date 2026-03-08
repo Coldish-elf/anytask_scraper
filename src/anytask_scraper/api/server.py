@@ -96,7 +96,6 @@ def _handle_error(exc: Exception) -> HTTPException:
 
 
 def create_app(startup_session_file: str | None = None) -> FastAPI:
-
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         state = AppState(startup_session_file)
@@ -116,7 +115,6 @@ def create_app(startup_session_file: str | None = None) -> FastAPI:
 
 
 def _register_routes(app: FastAPI) -> None:
-
     @app.get("/", response_model=HealthResponse, tags=["root"])
     def health() -> dict[str, str]:
         return {"status": "ok", "version": VERSION}

@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class GradebookMixin:
-
     app: AnytaskApp
 
     _selected_course_id: int | None

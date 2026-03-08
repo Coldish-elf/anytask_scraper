@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 
 class ExportMixin:
-
     app: AnytaskApp
 
     _selected_course_id: int | None
