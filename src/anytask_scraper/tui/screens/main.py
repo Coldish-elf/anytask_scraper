@@ -350,3 +350,20 @@ class MainScreen(ExportMixin, GradebookMixin, QueueMixin, TasksMixin, CoreMixin,
             if cid not in self.app.courses:
                 self._fetch_course(cid)
         self._update_key_bar()
+
+
+def _register_mixin_handlers(cls: type) -> None:
+    seen: set[int] = {id(h) for _, handlers in cls._decorated_handlers.items() for h, _ in handlers}
+    for base in cls.__mro__:
+        if base is cls:
+            continue
+        for value in vars(base).values():
+            if callable(value) and hasattr(value, "_textual_on") and id(value) not in seen:
+                seen.add(id(value))
+                for msg_type, selectors in value._textual_on:
+                    cls._decorated_handlers.setdefault(msg_type, []).append(
+                        (value, selectors)
+                    )
+
+
+_register_mixin_handlers(MainScreen)

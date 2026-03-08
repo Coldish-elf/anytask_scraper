@@ -30,9 +30,11 @@ class DownloadResult:
 
 
 class LoginError(Exception):
+    pass
 
 
 class WriteError(Exception):
+    pass
 
 class AnytaskClient:
 

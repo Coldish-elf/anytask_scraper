@@ -20,6 +20,7 @@ class TaskFilterBar(Widget):
 
     @dataclass
     class Reset(Message):
+        pass
 
     def __init__(
         self,
@@ -149,6 +150,7 @@ class QueueFilterBar(Widget):
 
     @dataclass
     class Reset(Message):
+        pass
 
     def __init__(
         self,
@@ -316,6 +318,7 @@ class GradebookFilterBar(Widget):
 
     @dataclass
     class Reset(Message):
+        pass
 
     def __init__(
         self,

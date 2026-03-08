@@ -842,6 +842,8 @@ class CoreMixin:
         option_list = self.query_one("#course-list", OptionList)  # type: ignore[attr-defined]
         title = course.title or f"Course {course.course_id}"
         option_list.add_option(Option(title, id=str(course.course_id)))
+        if option_list.highlighted is None:
+            option_list.highlighted = 0
 
     def _push_submission_screen(self, sub: Submission) -> None:
         from anytask_scraper.tui.screens.submission import (

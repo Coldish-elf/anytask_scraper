@@ -29,9 +29,9 @@ class TasksMixin:
     _selected_course_id: int | None
     _task_submission_cache: dict[tuple[int | None, str], Submission]
 
-    def _show_status(self, message: str, kind: str = "info", timeout: float = 4) -> None: ...
-    def _table_cursor_index(self, table: DataTable[Any], size: int) -> int | None: ...
-    def _push_submission_screen(self, sub: Submission) -> None: ...
+    _show_status: Any
+    _table_cursor_index: Any
+    _push_submission_screen: Any
 
     def _copy_task_payload(self) -> tuple[str, str] | None:
         from anytask_scraper.tui.clipboard import format_task_for_clipboard

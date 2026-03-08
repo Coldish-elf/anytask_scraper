@@ -33,9 +33,9 @@ class QueueMixin:
     _queue_preview_submission: Submission | None
     is_teacher_view: bool
 
-    def _show_status(self, message: str, kind: str = "info", timeout: float = 4) -> None: ...
-    def _table_cursor_index(self, table: DataTable[Any], size: int) -> int | None: ...
-    def _push_submission_screen(self, sub: Submission) -> None: ...
+    _show_status: Any
+    _table_cursor_index: Any
+    _push_submission_screen: Any
 
     def _copy_queue_payload(self) -> tuple[str, str] | None:
         from anytask_scraper.tui.clipboard import format_queue_entry_for_clipboard

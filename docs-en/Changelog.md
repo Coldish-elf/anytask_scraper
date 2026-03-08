@@ -1,37 +1,47 @@
 # Changelog
 
+## [0.10.2] - 2026-03-07
+
+### Fixed
+
+- IndentationError in client.py.
+- SyntaxError in filter_bar.py: three Reset(Message) dataclasses in TaskFilterBar, QueueFilterBar, and GradebookFilterBar had empty bodies, breaking TUI import.
+- course selection not working: OptionList.highlighted stayed None when options were added dynamically via add_option(), making Enter do nothing.
+- MRO shadowing: type stubs (def _show_status(...): ...) in TasksMixin, QueueMixin, and GradebookMixin shadowed real implementations in CoreMixin, silently breaking status messages, cursor tracking, and submission screen navigation.
+- @on handlers not firing: Textual's metaclass only discovers @on decorators on classes it creates directly. Mixin classes (plain Python classes) were invisible. Added _register_mixin_handlers() to propagate all mixin @on handlers.
+
 ## [0.10.1] - 2026-03-06
 
 ### Added
 
 - GitHub Actions CI: tests, lint, typecheck on each PR.
-- `py.typed` marker (PEP 561) for typed package consumers.
-- API bearer token authentication via `ANYTASK_API_TOKEN` environment variable.
-- Docker image and `.dockerignore` for ready-to-run API server container.
+- py.typed marker (PEP 561) for typed package consumers.
+- API bearer token authentication via ANYTASK_API_TOKEN environment variable.
+- Docker image and .dockerignore for ready-to-run API server container.
 
 ### Changed
 
-- Refactor `MainScreen` into 5 mixin modules: `_core.py`, `_tasks.py`, `_queue.py`, `_gradebook.py`, `_export.py`, plus shared `_helpers.py`.
+- Refactor MainScreen into 5 mixin modules: _core.py,_tasks.py, _queue.py,_gradebook.py, _export.py, plus shared_helpers.py.
 
 ## [0.10.0] - 2026-03-04
 
 ### Added
 
-#### Possibility of pushing ratings, comments and statuses in anytask.
+#### Possibility of pushing ratings, comments and statuses in anytask
 
-- Write operations (`client.py`): methods `set_grade`, `set_status`, `add_comment` for rating, changing status and commenting.
-- `SubmissionForms` and `WriteResult` models in `models.py`.
+- Write operations (client.py): methods set_grade, set_status, add_comment for rating, changing status and commenting.
+- SubmissionForms and WriteResult models in models.py.
 - Form parser. Retrieving CSRF token and form metadata from the submission page. Form parser. Retrieving CSRF token and form metadata from the submission page.
-- CLI subcommand `push`: `push grade`, `push status`, `push comment`.
-- API endpoints: `POST /submissions/{id}/grade`, `POST /submissions/{id}/status`, `POST /submissions/{id}/comment`.
+- CLI subcommand push: push grade, push status, push comment.
+- API endpoints: POST /submissions/{id}/grade, POST /submissions/{id}/status, POST /submissions/{id}/comment.
 - TUI: action buttons (Accept & Rate, Grade, Status, Comment) in the queue panel and on the submission screen in teacher mode.
 
 #### Functionality expansion
 
 - ActionMenu in TUI has been expanded.
-- CLI commands `db diff` and `db stats` to view queue changes and statistics.
-- API endpoints: `GET /db/diff`, `GET /db/stats`.
-- Methods `diff_assignment`, `get_changed_entries`, `statistics` in `json_db.py`.
+- CLI commands db diff and db stats to view queue changes and statistics.
+- API endpoints: GET /db/diff, GET /db/stats.
+- Methods diff_assignment, get_changed_entries, statistics in json_db.py.
 
 #### Improvements
 
@@ -44,17 +54,17 @@
 
 ### Corrected
 
-- Correct `multipart/form-data` encoding for all POST post requests.
+- Correct multipart/form-data encoding for all POST post requests.
 - TUI protection from crashes due to network errors in background recording workers.
 
 ## [0.9.0] - 2026-03-01
 
 ### Added
 
-- Module `json_db.py`: local JSON queue database (`QueueJsonDB`) with hierarchy `courses -> students -> assignments -> files` and event log `issue_chain`.
-- CLI commands `db sync`, `db pull`, `db process`, `db write` to manage the queue database.
+- Module json_db.py: local JSON queue database (QueueJsonDB) with hierarchy courses -> students -> assignments -> files and event log issue_chain.
+- CLI commands db sync, db pull, db process, db write to manage the queue database.
 - HTTP API.
-- Documentation `docs/API.md`.
+- Documentation docs/API.md.
 
 ### Changed
 
@@ -62,12 +72,12 @@
 
 ### Corrected
 
-- Path traversal protection for API file parameters (`session_file`, `db_file`).
+- Path traversal protection for API file parameters (session_file, db_file).
 - Streaming file download: fixed redirect check during login (the URL was used instead of the response body, which led to empty files).
-- Session files are saved with permissions `0600` (previously available to all users).
-- Sanitization of downloaded file names to prevent path traversal (`../`).
+- Session files are saved with permissions 0600 (previously available to all users).
+- Sanitization of downloaded file names to prevent path traversal (../).
 - Errors when loading solutions are now logged rather than silently ignored.
-*.html - CSV preview in TUI uses correct escaping via `csv.writer`.
+*.html - CSV preview in TUI uses correct escaping via csv.writer.
 - Removed unused imports, streamlined imports in all affected modules.
 
 ## [0.8.0] - 2026-02-27
@@ -143,8 +153,8 @@
 ### Added
 
 - Logging.
-- Support for debug mode in the CLI (`--debug` / `-d`) and writing logs to a file (`--log-file`).
-- `debug` parameter in user settings.
+- Support for debug mode in the CLI (--debug / -d) and writing logs to a file (--log-file).
+- debug parameter in user settings.
 - Support for launching TUI in debug mode.
 
 ### Changed
@@ -160,20 +170,20 @@
 
 ### Added
 
-- `settings init` now automatically creates `credentials.json` with a template if the file is missing.
-- Added `auto_login_session: true` to the default settings for `settings init`.
+- settings init now automatically creates credentials.json with a template if the file is missing.
+- Added auto_login_session: true to the default settings for settings init.
 
 ### Changed
 
-- The logic of export filters and data preloading for `Tasks`, `Queue`, `Submissions`, `Gradebook` has been reworked.
+- The logic of export filters and data preloading for Tasks, Queue, Submissions, Gradebook has been reworked.
 - Added dynamic captions and filtering options to the Export page in TUI.
 
 ### Corrected
 
-- Navigation through filter fields on the Export page: inactive (`disabled`) fields are skipped when navigating with arrows and with cyclic focus.
+- Navigation through filter fields on the Export page: inactive (disabled) fields are skipped when navigating with arrows and with cyclic focus.
 - Stabilized updating of filters and previews after data loading.
 - Added protection against race-condition during asynchronous preload.
-- Improved visual highlighting of focus in the `Export Type` and `Format` groups: the current element under the cursor is highlighted in color without resizing.
+- Improved visual highlighting of focus in the Export Type and Format groups: the current element under the cursor is highlighted in color without resizing.
 
 ## [0.6.0] - 2026-02-13
 
@@ -236,7 +246,7 @@
 
 ### Added
 
-- Saving workflow authorization and settings (`settings init`, credentials and session files).
+- Saving workflow authorization and settings (settings init, credentials and session files).
 
 ### Changed
 

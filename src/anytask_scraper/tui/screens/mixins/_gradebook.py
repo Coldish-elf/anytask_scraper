@@ -29,8 +29,8 @@ class GradebookMixin:
     _gb_sort_reverse: bool
     _gb_all_tasks: list[str]
 
-    def _show_status(self, message: str, kind: str = "info", timeout: float = 4) -> None: ...
-    def _table_cursor_index(self, table: DataTable[Any], size: int) -> int | None: ...
+    _show_status: Any
+    _table_cursor_index: Any
 
     _GRADEBOOK_COLOR_MAP: dict[str, str] = {
         "#65E31B": "bold green",
