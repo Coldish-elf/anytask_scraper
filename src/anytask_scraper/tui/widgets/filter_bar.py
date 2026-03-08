@@ -10,19 +10,15 @@ from textual.widgets import Input, Select
 
 
 class TaskFilterBar(Widget):
-    """Filter bar for the Tasks tab: text search + status + section selects."""
-
     @dataclass
     class Changed(Message):
-        """Emitted when any filter value changes."""
-
         text: str
         status: str
         section: str
 
     @dataclass
     class Reset(Message):
-        """Emitted when the filter bar is reset to defaults."""
+        pass
 
     def __init__(
         self,
@@ -39,14 +35,14 @@ class TaskFilterBar(Widget):
         yield Select[str](
             [(s, s) for s in self._statuses],
             allow_blank=True,
-            value=Select.BLANK,
+            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Status",
             id="task-filter-status",
         )
         yield Select[str](
             [(s, s) for s in self._sections],
             allow_blank=True,
-            value=Select.BLANK,
+            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Section",
             id="task-filter-section",
         )
@@ -70,7 +66,6 @@ class TaskFilterBar(Widget):
         self.post_message(self.Changed(text=text, status=status, section=section))
 
     def reset(self) -> None:
-        """Clear text input and reset all selects to blank, then emit Changed and Reset."""
         self.query_one("#task-filter-text", Input).value = ""
         self.query_one("#task-filter-status", Select).value = Select.BLANK
         self.query_one("#task-filter-section", Select).value = Select.BLANK
@@ -78,7 +73,6 @@ class TaskFilterBar(Widget):
         self.post_message(self.Reset())
 
     def save_state(self) -> dict[str, Any]:
-        """Return current filter values as a dict for undo functionality."""
         return {
             "text": self.query_one("#task-filter-text", Input).value,
             "status": self.query_one("#task-filter-status", Select).value,
@@ -86,18 +80,15 @@ class TaskFilterBar(Widget):
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
-        """Restore filter values from a previously saved dict, then emit Changed."""
         self.query_one("#task-filter-text", Input).value = state.get("text", "")
         self.query_one("#task-filter-status", Select).value = state.get("status", Select.BLANK)
         self.query_one("#task-filter-section", Select).value = state.get("section", Select.BLANK)
         self._emit_changed()
 
     def focus_text(self) -> None:
-        """Focus the text search input."""
         self.query_one("#task-filter-text", Input).focus()
 
     def focus_next_filter(self) -> bool:
-        """Cycle forward. Returns False if already on last element."""
         focusable = [
             self.query_one("#task-filter-text", Input),
             self.query_one("#task-filter-status", Select),
@@ -113,7 +104,6 @@ class TaskFilterBar(Widget):
         return True
 
     def focus_prev_filter(self) -> bool:
-        """Cycle backward. Returns False if already on first element."""
         focusable = [
             self.query_one("#task-filter-text", Input),
             self.query_one("#task-filter-status", Select),
@@ -133,7 +123,6 @@ class TaskFilterBar(Widget):
         statuses: list[str],
         sections: list[str],
     ) -> None:
-        """Repopulate select options when course changes."""
         self._statuses = statuses
         self._sections = sections
 
@@ -147,12 +136,8 @@ class TaskFilterBar(Widget):
 
 
 class QueueFilterBar(Widget):
-    """Filter bar for the Queue tab: text + student + task + status selects."""
-
     @dataclass
     class Changed(Message):
-        """Emitted when any filter value changes."""
-
         text: str
         student: str
         task: str
@@ -161,7 +146,7 @@ class QueueFilterBar(Widget):
 
     @dataclass
     class Reset(Message):
-        """Emitted when the filter bar is reset to defaults."""
+        pass
 
     def __init__(
         self,
@@ -182,28 +167,28 @@ class QueueFilterBar(Widget):
         yield Select[str](
             [(s, s) for s in self._students],
             allow_blank=True,
-            value=Select.BLANK,
+            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Student",
             id="queue-filter-student",
         )
         yield Select[str](
             [(t, t) for t in self._tasks],
             allow_blank=True,
-            value=Select.BLANK,
+            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Task",
             id="queue-filter-task",
         )
         yield Select[str](
             [(s, s) for s in self._statuses],
             allow_blank=True,
-            value=Select.BLANK,
+            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Status",
             id="queue-filter-status",
         )
         yield Select[str](
             [(r, r) for r in self._reviewers],
             allow_blank=True,
-            value=Select.BLANK,
+            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Reviewer",
             id="queue-filter-reviewer",
         )
@@ -233,7 +218,6 @@ class QueueFilterBar(Widget):
         )
 
     def reset(self) -> None:
-        """Clear text input and reset all selects to blank, then emit Changed and Reset."""
         self.query_one("#queue-filter-text", Input).value = ""
         self.query_one("#queue-filter-student", Select).value = Select.BLANK
         self.query_one("#queue-filter-task", Select).value = Select.BLANK
@@ -243,7 +227,6 @@ class QueueFilterBar(Widget):
         self.post_message(self.Reset())
 
     def save_state(self) -> dict[str, Any]:
-        """Return current filter values as a dict for undo functionality."""
         return {
             "text": self.query_one("#queue-filter-text", Input).value,
             "student": self.query_one("#queue-filter-student", Select).value,
@@ -253,7 +236,6 @@ class QueueFilterBar(Widget):
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
-        """Restore filter values from a previously saved dict, then emit Changed."""
         self.query_one("#queue-filter-text", Input).value = state.get("text", "")
         self.query_one("#queue-filter-student", Select).value = state.get("student", Select.BLANK)
         self.query_one("#queue-filter-task", Select).value = state.get("task", Select.BLANK)
@@ -262,11 +244,9 @@ class QueueFilterBar(Widget):
         self._emit_changed()
 
     def focus_text(self) -> None:
-        """Focus the text search input."""
         self.query_one("#queue-filter-text", Input).focus()
 
     def focus_next_filter(self) -> bool:
-        """Cycle forward. Returns False if already on last element."""
         focusable = [
             self.query_one("#queue-filter-text", Input),
             self.query_one("#queue-filter-student", Select),
@@ -284,7 +264,6 @@ class QueueFilterBar(Widget):
         return True
 
     def focus_prev_filter(self) -> bool:
-        """Cycle backward. Returns False if already on first element."""
         focusable = [
             self.query_one("#queue-filter-text", Input),
             self.query_one("#queue-filter-student", Select),
@@ -308,7 +287,6 @@ class QueueFilterBar(Widget):
         statuses: list[str],
         reviewers: list[str] | None = None,
     ) -> None:
-        """Repopulate select options when queue data changes."""
         self._students = students
         self._tasks = tasks
         self._statuses = statuses
@@ -326,19 +304,15 @@ class QueueFilterBar(Widget):
 
 
 class GradebookFilterBar(Widget):
-    """Filter bar for the Gradebook tab: text search + group + teacher selects."""
-
     @dataclass
     class Changed(Message):
-        """Emitted when any filter value changes."""
-
         text: str
         group: str
         teacher: str
 
     @dataclass
     class Reset(Message):
-        """Emitted when the filter bar is reset to defaults."""
+        pass
 
     def __init__(
         self,
@@ -355,14 +329,14 @@ class GradebookFilterBar(Widget):
         yield Select[str](
             [(g, g) for g in self._groups],
             allow_blank=True,
-            value=Select.BLANK,
+            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Group",
             id="gb-filter-group",
         )
         yield Select[str](
             [(t, t) for t in self._teachers],
             allow_blank=True,
-            value=Select.BLANK,
+            value=Select.BLANK,  # type: ignore[arg-type]
             prompt="Teacher",
             id="gb-filter-teacher",
         )
@@ -386,7 +360,6 @@ class GradebookFilterBar(Widget):
         self.post_message(self.Changed(text=text, group=group, teacher=teacher))
 
     def reset(self) -> None:
-        """Clear all filters and emit Changed + Reset."""
         self.query_one("#gb-filter-text", Input).value = ""
         self.query_one("#gb-filter-group", Select).value = Select.BLANK
         self.query_one("#gb-filter-teacher", Select).value = Select.BLANK
@@ -394,7 +367,6 @@ class GradebookFilterBar(Widget):
         self.post_message(self.Reset())
 
     def save_state(self) -> dict[str, Any]:
-        """Return current filter values for undo."""
         return {
             "text": self.query_one("#gb-filter-text", Input).value,
             "group": self.query_one("#gb-filter-group", Select).value,
@@ -402,18 +374,15 @@ class GradebookFilterBar(Widget):
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
-        """Restore filter values from a previously saved dict."""
         self.query_one("#gb-filter-text", Input).value = state.get("text", "")
         self.query_one("#gb-filter-group", Select).value = state.get("group", Select.BLANK)
         self.query_one("#gb-filter-teacher", Select).value = state.get("teacher", Select.BLANK)
         self._emit_changed()
 
     def focus_text(self) -> None:
-        """Focus the text search input."""
         self.query_one("#gb-filter-text", Input).focus()
 
     def focus_next_filter(self) -> bool:
-        """Cycle forward. Returns False if already on last element."""
         focusable = [
             self.query_one("#gb-filter-text", Input),
             self.query_one("#gb-filter-group", Select),
@@ -429,7 +398,6 @@ class GradebookFilterBar(Widget):
         return True
 
     def focus_prev_filter(self) -> bool:
-        """Cycle backward. Returns False if already on first element."""
         focusable = [
             self.query_one("#gb-filter-text", Input),
             self.query_one("#gb-filter-group", Select),
@@ -449,7 +417,6 @@ class GradebookFilterBar(Widget):
         groups: list[str],
         teachers: list[str],
     ) -> None:
-        """Repopulate select options when gradebook data changes."""
         self._groups = groups
         self._teachers = teachers
 

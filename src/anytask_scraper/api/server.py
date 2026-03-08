@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from anytask_scraper._queue_helpers import filter_queue_entries, parse_ajax_entry
 from anytask_scraper.client import LoginError, WriteError
@@ -50,11 +52,23 @@ from .state import AppState
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.10.0"
+VERSION = "1.0.0"
+
+_bearer_scheme = HTTPBearer(auto_error=False)
+_bearer_dependency = Depends(_bearer_scheme)
+
+
+def _verify_token(
+    credentials: HTTPAuthorizationCredentials | None = _bearer_dependency,  # noqa: B008
+) -> None:
+    expected = os.environ.get("ANYTASK_API_TOKEN", "")
+    if not expected:
+        return
+    if credentials is None or credentials.credentials != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing API token")
 
 
 def _validate_file_path(raw_path: str) -> Path:
-    """Validate a user-supplied file path against path traversal."""
     p = Path(raw_path)
     if p.is_absolute():
         raise HTTPException(status_code=400, detail="Absolute file paths are not allowed")
@@ -82,8 +96,6 @@ def _handle_error(exc: Exception) -> HTTPException:
 
 
 def create_app(startup_session_file: str | None = None) -> FastAPI:
-    """Create and configure the FastAPI application."""
-
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         state = AppState(startup_session_file)
@@ -95,6 +107,7 @@ def create_app(startup_session_file: str | None = None) -> FastAPI:
         title="anytask-scraper API",
         version=VERSION,
         lifespan=lifespan,
+        dependencies=[Depends(_verify_token)],
     )
 
     _register_routes(app)
@@ -102,8 +115,6 @@ def create_app(startup_session_file: str | None = None) -> FastAPI:
 
 
 def _register_routes(app: FastAPI) -> None:
-    """Register all routes on the app, using request.app.state for shared state."""
-
     @app.get("/", response_model=HealthResponse, tags=["root"])
     def health() -> dict[str, str]:
         return {"status": "ok", "version": VERSION}

@@ -26,10 +26,10 @@ anytask-scraper -h
 anytask-scraper settings init
 ```
 
-Команда создаёт:
+Эта команда создаёт:
 
 - `.anytask_scraper_settings.json` - файл параметров по умолчанию
-- `credentials.json` - шаблон логина/пароля (если файла не было).
+- `credentials.json` - шаблон логина и пароля, если файла ещё не было
 
 ## 3. Заполнение учётных данных
 
@@ -42,7 +42,7 @@ anytask-scraper settings init
 }
 ```
 
-Поддерживаются и другие форматы файла (`key=value`, `key:value`, две строки `username`/`password`), подробнее в [Configuration](Configuration.md).
+Поддерживаются и другие форматы файла (`key=value`, `key:value`, две строки `username`/`password`), подробнее см. в [Configuration](Configuration.md).
 
 ## 4. Первый экспорт курса
 

@@ -1,79 +1,135 @@
 # Anytask Scraper
 
-anytask-scraper - CLI, TUI и Python-библиотека для [anytask.org](https://anytask.org/).
+[![CI](https://github.com/Coldish-elf/anytask_scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/Coldish-elf/anytask_scraper/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Требования
+[Русская версия](README.ru.md)
 
-Нужен Python `3.10+`.
+`anytask-scraper` is a Python toolkit for working with [anytask.org](https://anytask.org/). It includes:
 
-## Установка
+- a CLI for exporting and inspecting course data
+- a TUI for interactive browsing
+- an optional HTTP API for local automation
+- a typed Python library for scripting and integrations
+
+All examples in this repository use placeholder course IDs and synthetic credentials.
+
+## Highlights
+
+- `src/` layout with a reusable library and console entry points
+- export support for JSON, CSV, and Markdown
+- review queue and gradebook workflows
+- optional FastAPI server for local HTTP access
+- test suite, linting, type-checking, and CI
+
+## Requirements
+
+- Python `3.10+`
+
+## Installation
+
+Library only (for integrations):
 
 ```bash
-pip install git+https://github.com/Coldish-elf/anytask_scraper.git
+pip install "git+https://github.com/Coldish-elf/anytask_scraper.git"
 ```
 
-С поддержкой HTTP API:
+With CLI and TUI:
 
 ```bash
-pip install "anytask-scraper[api] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
+pip install "anytask-scraper[tui] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
 ```
 
-Или
+With HTTP API server:
+
+```bash
+pip install "anytask-scraper[tui,api] @ git+https://github.com/Coldish-elf/anytask_scraper.git"
+```
+
+For local development:
 
 ```bash
 git clone https://github.com/Coldish-elf/anytask_scraper.git
 cd anytask_scraper
-pip install -e .
+pip install -e ".[dev,api]"
 ```
 
-## Быстрая проверка
+## Quick Start
 
-```bash
-anytask-scraper -h
-# или быстрый старт TUI
-anytask-tui
-# или быстрый старт API
-anytask-api
-```
-
-## Базовый сценарий CLI
-
-1. Инициализируйте настройки:
+Initialize local settings and a credential template:
 
 ```bash
 anytask-scraper settings init
 ```
 
-2. Заполните `credentials.json` (логин/пароль).
+Check the CLI:
 
-3. Получите данные по курсу:
+```bash
+anytask-scraper -h
+```
+
+Fetch a course summary with a placeholder course ID:
 
 ```bash
 anytask-scraper course -c 12345 --show
 ```
 
-4. Получите очередь:
+Fetch the review queue:
 
 ```bash
 anytask-scraper queue -c 12345 --show
 ```
 
-5. Локальная JSON DB очереди (опционально):
+Start the TUI:
 
 ```bash
-anytask-scraper db sync -c 12345 --db-file ./output/queue_db.json --pull --limit 20 -f table
-anytask-scraper db pull -c 12345 --db-file ./output/queue_db.json \
-  --student-contains alice --status-contains review --issue-id 421525 -f table
+anytask-tui
 ```
 
-## Документация
+Start the HTTP API:
 
-- [Быстрый старт](docs/QuickStart.md)
-- [CLI](docs/CLI.md)
-- [TUI](docs/TUI.md)
-- [HTTP API](docs/API.md)
-- [Конфигурация](docs/Configuration.md)
-- [Форматы экспорта](docs/Export_Formats.md)
-- [Архитектура](docs/Architecture.md)
-- [Справочник библиотеки](docs/Library_Reference.md)
-- [Changelog](docs/Changelog.md)
+```bash
+anytask-api
+```
+
+## Documentation
+
+English:
+
+- [Quick Start](docs-en/QuickStart.md)
+- [CLI](docs-en/CLI.md)
+- [TUI](docs-en/TUI.md)
+- [HTTP API](docs-en/API.md)
+- [Configuration](docs-en/Configuration.md)
+- [Export Formats](docs-en/Export_Formats.md)
+- [Architecture](docs-en/Architecture.md)
+- [Library Reference](docs-en/Library_Reference.md)
+
+Russian:
+
+- [Быстрый старт](docs-ru/QuickStart.md)
+- [CLI](docs-ru/CLI.md)
+- [TUI](docs-ru/TUI.md)
+- [HTTP API](docs-ru/API.md)
+- [Конфигурация](docs-ru/Configuration.md)
+- [Форматы экспорта](docs-ru/Export_Formats.md)
+- [Архитектура](docs-ru/Architecture.md)
+- [Справочник библиотеки](docs-ru/Library_Reference.md)
+
+## Development
+
+Run the local quality checks:
+
+```bash
+pytest -q
+ruff check src tests
+ruff format --check src tests
+mypy src
+```
+
+Build the package artifacts:
+
+```bash
+python -m build
+```

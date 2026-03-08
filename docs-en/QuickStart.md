@@ -14,7 +14,7 @@ cd anytask_scraper
 pip install -e ".[dev]"
 ```
 
-Examination:
+Verify the installation:
 
 ```bash
 anytask-scraper -h
@@ -26,10 +26,10 @@ anytask-scraper -h
 anytask-scraper settings init
 ```
 
-The team creates:
+This command creates:
 
-- `.anytask_scraper_settings.json` - default settings file
-- `credentials.json` - login/password template (if there was no file).
+- `.anytask_scraper_settings.json` - the default settings file
+- `credentials.json` - a login/password template if the file does not exist yet
 
 ## 3. Filling in credentials
 
@@ -42,7 +42,7 @@ Fill out `credentials.json`:
 }
 ```
 
-Other file formats are also supported (`key=value`, `key:value`, two lines `username`/`password`), more details in [Configuration](Configuration.md).
+Other file formats are also supported (`key=value`, `key:value`, or two lines for `username` and `password`). See [Configuration](Configuration.md).
 
 ## 4. First export of the course
 
@@ -50,14 +50,14 @@ Other file formats are also supported (`key=value`, `key:value`, two lines `user
 anytask-scraper course -c 12345 -f json -o ./output --show
 ```
 
-What will happen:
+What happens:
 
-- you will be logged in to Anytask
-- the course page `12345` will be loaded
-- data will be saved in `./output/course_12345.json`
-- the table will be shown in the terminal.
+- the client logs in to Anytask
+- course page `12345` is loaded
+- data is saved to `./output/course_12345.json`
+- the table is rendered in the terminal
 
-## 5. Teacher's turn
+## 5. Review queue
 
 ```bash
 anytask-scraper queue -c 12345 --deep -f markdown -o ./output
@@ -65,13 +65,13 @@ anytask-scraper queue -c 12345 --deep -f markdown -o ./output
 
 `--deep` additionally loads issue pages and comments.
 
-## 6. Statement
+## 6. Gradebook
 
 ```bash
 anytask-scraper gradebook -c 12345 -f csv -o ./output
 ```
 
-## 7. Auto-detection of courses
+## 7. Course discovery
 
 ```bash
 anytask-scraper discover
@@ -84,4 +84,4 @@ anytask-tui
 anytask-scraper tui
 ```
 
-Then use the [TUI](TUI.md) manual.
+Then continue with the [TUI](TUI.md) guide.

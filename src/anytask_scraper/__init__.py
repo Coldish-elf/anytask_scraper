@@ -1,14 +1,10 @@
+from __future__ import annotations
+
 from importlib.metadata import PackageNotFoundError, version
+from typing import TYPE_CHECKING
 
 from anytask_scraper._logging import setup_logging
 from anytask_scraper.client import AnytaskClient, DownloadResult, LoginError
-from anytask_scraper.display import (
-    display_course,
-    display_gradebook,
-    display_queue,
-    display_submission,
-    display_task_detail,
-)
 from anytask_scraper.json_db import QueueJsonDB
 from anytask_scraper.models import (
     Comment,
@@ -53,10 +49,43 @@ from anytask_scraper.storage import (
     save_submissions_markdown,
 )
 
+if TYPE_CHECKING:
+    from anytask_scraper.display import (
+        display_course as display_course,
+    )
+    from anytask_scraper.display import (
+        display_gradebook as display_gradebook,
+    )
+    from anytask_scraper.display import (
+        display_queue as display_queue,
+    )
+    from anytask_scraper.display import (
+        display_submission as display_submission,
+    )
+    from anytask_scraper.display import (
+        display_task_detail as display_task_detail,
+    )
+
 try:
     __version__ = version("anytask-scraper")
 except PackageNotFoundError:
     __version__ = "0.0.0"
+
+
+def __getattr__(name: str) -> object:
+    _display_names = {
+        "display_course",
+        "display_gradebook",
+        "display_queue",
+        "display_submission",
+        "display_task_detail",
+    }
+    if name in _display_names:
+        from anytask_scraper import display as _display
+
+        return getattr(_display, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "AnytaskClient",

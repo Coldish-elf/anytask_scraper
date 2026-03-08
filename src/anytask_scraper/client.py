@@ -24,24 +24,20 @@ _COLAB_FILE_ID_RE = re.compile(r"(?:/drive/|/notebook/d/)([a-zA-Z0-9_-]+)")
 
 @dataclass
 class DownloadResult:
-    """Result of a file download attempt."""
-
     success: bool
     path: str
     reason: str = ""
 
 
 class LoginError(Exception):
-    """Auth failed."""
+    pass
 
 
 class WriteError(Exception):
-    """Write operation failed at the protocol level (e.g. missing CSRF)."""
+    pass
 
 
 class AnytaskClient:
-    """Authenticated anytask client."""
-
     def __init__(self, username: str = "", password: str = "") -> None:
         self.username = username
         self.password = password
@@ -102,9 +98,7 @@ class AnytaskClient:
             logger.info("Session expired, re-authenticating")
             self._authenticated = False
             if not self._has_credentials():
-                raise LoginError(
-                    "Saved session expired and no credentials were provided"
-                )
+                raise LoginError("Saved session expired and no credentials were provided")
             self.login()
             resp = self._client.request(method, url, **kwargs)
 
@@ -177,9 +171,7 @@ class AnytaskClient:
             stat.S_IRUSR | stat.S_IWUSR,
         )
         try:
-            os.write(
-                fd, json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8")
-            )
+            os.write(fd, json.dumps(payload, indent=2, ensure_ascii=False).encode("utf-8"))
         finally:
             os.close(fd)
 
@@ -196,7 +188,6 @@ class AnytaskClient:
         return resp.text
 
     def fetch_task_description(self, task_id: int) -> str:
-        """Return task description from /task/edit/{id}."""
         logger.debug("Fetching task description for task %d", task_id)
         from anytask_scraper.parser import parse_task_edit_page
 
@@ -204,13 +195,11 @@ class AnytaskClient:
         return parse_task_edit_page(resp.text)
 
     def fetch_queue_page(self, course_id: int) -> str:
-        """Return queue page HTML."""
         logger.debug("Fetching queue page for course %d", course_id)
         resp = self._request("GET", f"{BASE_URL}/course/{course_id}/queue?update_time=")
         return resp.text
 
     def fetch_gradebook_page(self, course_id: int) -> str:
-        """Return gradebook page HTML."""
         logger.debug("Fetching gradebook page for course %d", course_id)
         resp = self._request("GET", f"{BASE_URL}/course/{course_id}/gradebook/")
         return resp.text
@@ -268,24 +257,18 @@ class AnytaskClient:
                 break
             all_entries.extend(data)
             total = int(str(result.get("recordsTotal", 0)))
-            logger.debug(
-                "Queue pagination: fetched %d/%d entries", len(all_entries), total
-            )
+            logger.debug("Queue pagination: fetched %d/%d entries", len(all_entries), total)
             start += page_size
             if start >= total or len(data) < page_size:
                 break
         return all_entries
 
     def fetch_submission_page(self, issue_url: str) -> str:
-        """Return issue page HTML."""
         url = issue_url if issue_url.startswith("http") else f"{BASE_URL}{issue_url}"
         resp = self._request("GET", url)
         return resp.text
 
-    def _fetch_submission_forms(
-        self, issue_id: int, issue_url: str = ""
-    ) -> SubmissionForms:
-        """GET submission page and extract form metadata + CSRF."""
+    def _fetch_submission_forms(self, issue_id: int, issue_url: str = "") -> SubmissionForms:
         from anytask_scraper.parser import extract_submission_forms
 
         raw_url = issue_url or f"/issue/{issue_id}/"
@@ -385,7 +368,6 @@ class AnytaskClient:
         *,
         issue_url: str = "",
     ) -> WriteResult:
-        """Set status on a submission (3=Under Review, 4=Needs Rework, 5=Accepted)."""
         logger.info("Setting status %d on issue %d", status, issue_id)
         try:
             forms = self._fetch_submission_forms(issue_id, issue_url)
@@ -526,18 +508,14 @@ class AnytaskClient:
 
     @staticmethod
     def _is_login_redirect(resp: httpx.Response) -> bool:
-        """Check if response was redirected to login page (URL only, no body read)."""
         return "/accounts/login/" in str(resp.url)
 
     def _download_to_file(self, url: str, dest: Path) -> httpx.Response:
-        """Stream download to file, handling login redirects."""
         with self._client.stream("GET", url) as resp:
             if self._is_login_redirect(resp):
                 self._authenticated = False
                 if not self._has_credentials():
-                    raise LoginError(
-                        "Saved session expired and no credentials were provided"
-                    )
+                    raise LoginError("Saved session expired and no credentials were provided")
                 self.login()
                 with self._client.stream("GET", url) as retried:
                     retried.raise_for_status()
@@ -552,9 +530,7 @@ class AnytaskClient:
             return resp
 
     @staticmethod
-    def _validate_downloaded_file(
-        path: Path, content_type: str, expected_suffix: str
-    ) -> str:
+    def _validate_downloaded_file(path: Path, content_type: str, expected_suffix: str) -> str:
         """Validate downloaded file. Returns empty string if OK, or reason if invalid."""
         if not path.exists() or path.stat().st_size == 0:
             return "empty_file"
@@ -576,9 +552,7 @@ class AnytaskClient:
                 return "jupyter_server_html"
             return "html_instead_of_file"
 
-        if expected_suffix.lower() == ".ipynb" and not head_lower.lstrip().startswith(
-            b"{"
-        ):
+        if expected_suffix.lower() == ".ipynb" and not head_lower.lstrip().startswith(b"{"):
             return "invalid_notebook_format"
 
         if (
@@ -591,7 +565,6 @@ class AnytaskClient:
         return ""
 
     def download_file(self, url: str, output_path: str) -> DownloadResult:
-        """Download file to local path with content validation."""
         logger.debug("Downloading %s -> %s", url, output_path)
         if not self._authenticated and self._has_credentials():
             self.login()
@@ -609,9 +582,7 @@ class AnytaskClient:
         except Exception:
             tmp_path.unlink(missing_ok=True)
             logger.exception("Download failed: %s", url)
-            return DownloadResult(
-                success=False, path=output_path, reason="download_error"
-            )
+            return DownloadResult(success=False, path=output_path, reason="download_error")
 
         content_type = resp.headers.get("content-type", "")
         problem = self._validate_downloaded_file(tmp_path, content_type, output.suffix)
@@ -624,17 +595,10 @@ class AnytaskClient:
         logger.debug("Download complete: %s", output_path)
         return DownloadResult(success=True, path=output_path, reason="ok")
 
-    def download_colab_notebook(
-        self, colab_url: str, output_path: str
-    ) -> DownloadResult:
-        """Try downloading a Colab notebook as .ipynb."""
-        m = _COLAB_FILE_ID_RE.search(colab_url) or re.search(
-            r"drive/([a-zA-Z0-9_-]+)", colab_url
-        )
+    def download_colab_notebook(self, colab_url: str, output_path: str) -> DownloadResult:
+        m = _COLAB_FILE_ID_RE.search(colab_url) or re.search(r"drive/([a-zA-Z0-9_-]+)", colab_url)
         if m is None:
-            return DownloadResult(
-                success=False, path=output_path, reason="no_file_id_in_url"
-            )
+            return DownloadResult(success=False, path=output_path, reason="no_file_id_in_url")
 
         file_id = m.group(1)
         output = Path(output_path)
@@ -657,9 +621,9 @@ class AnytaskClient:
 
                     content = resp.content
                     content_lower = content[:1024].lower().strip()
-                    if content_lower.startswith(
-                        b"<!doctype html"
-                    ) or content_lower.startswith(b"<html"):
+                    if content_lower.startswith(b"<!doctype html") or content_lower.startswith(
+                        b"<html"
+                    ):
                         confirm_match = re.search(rb"confirm=([a-zA-Z0-9_-]+)", content)
                         if confirm_match:
                             confirm_url = (
@@ -667,10 +631,7 @@ class AnytaskClient:
                                 f"&export=download&confirm={confirm_match.group(1).decode()}"
                             )
                             resp2 = gc.get(confirm_url)
-                            if (
-                                resp2.status_code == 200
-                                and resp2.content.strip().startswith(b"{")
-                            ):
+                            if resp2.status_code == 200 and resp2.content.strip().startswith(b"{"):
                                 output.write_bytes(resp2.content)
                                 return DownloadResult(
                                     success=True,
