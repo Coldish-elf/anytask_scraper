@@ -11,6 +11,7 @@ from anytask_scraper.github_clone import (
     parse_github_url,
 )
 
+
 def test_standard_repo_url() -> None:
     info = parse_github_url("https://github.com/user/repo")
     assert info is not None

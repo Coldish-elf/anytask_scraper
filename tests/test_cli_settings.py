@@ -72,7 +72,8 @@ def test_merge_runtime_settings_applies_runtime_fallbacks() -> None:
     _merge_runtime_settings(args, {})
 
     for key, default in INIT_DEFAULTS.items():
-        assert getattr(args, key) == default, f"{key}: expected {default!r}, got {getattr(args, key)!r}"
+        actual = getattr(args, key)
+        assert actual == default, f"{key}: expected {default!r}, got {actual!r}"
 
 
 def test_settings_init_parses() -> None:

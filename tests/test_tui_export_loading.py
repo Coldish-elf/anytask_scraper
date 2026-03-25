@@ -487,7 +487,16 @@ def test_handle_export_passes_columns_and_filename() -> None:
     main_mod.MainScreen._handle_export(screen)
 
     assert len(captured) == 1
-    fmt, output_path, export_type, filters, columns, filename, include_files, clone_repos = captured[0]
+    (
+        fmt,
+        output_path,
+        export_type,
+        filters,
+        columns,
+        filename,
+        include_files,
+        clone_repos,
+    ) = captured[0]
     assert fmt == "csv"
     assert export_type == "subs-export-radio"
     assert filters == {"task": "Task 1"}
