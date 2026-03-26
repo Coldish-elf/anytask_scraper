@@ -125,17 +125,17 @@ def _preview_screen(app: _FakeApp) -> SimpleNamespace:
     screen._get_included_columns = lambda: []
     screen._get_current_export_filters = lambda: {}
     screen._resolve_export_filename = lambda name: name
-    screen._preview_queue = (
-        lambda entries, fmt, course_id, total, included: f"queue:{course_id}:{total}:{fmt}"
+    screen._preview_queue = lambda entries, fmt, course_id, total, included: (
+        f"queue:{course_id}:{total}:{fmt}"
     )
-    screen._preview_submissions = (
-        lambda entries, fmt, course_id, total, included: f"subs:{course_id}:{total}:{fmt}"
+    screen._preview_submissions = lambda entries, fmt, course_id, total, included: (
+        f"subs:{course_id}:{total}:{fmt}"
     )
-    screen._preview_gradebook = (
-        lambda groups, fmt, course_id, total, included: f"gradebook:{course_id}:{total}:{fmt}"
+    screen._preview_gradebook = lambda groups, fmt, course_id, total, included: (
+        f"gradebook:{course_id}:{total}:{fmt}"
     )
-    screen._has_loaded_export_data = (
-        lambda export_type: main_mod.MainScreen._has_loaded_export_data(screen, export_type)
+    screen._has_loaded_export_data = lambda export_type: (
+        main_mod.MainScreen._has_loaded_export_data(screen, export_type)
     )
     return screen
 
