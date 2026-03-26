@@ -55,7 +55,7 @@ api = [
 ]
 dev = [
     "pytest>=8.0",
-    "ruff>=0.4",
+    "ruff==0.15.1",
     "mypy>=1.10",
     "rich>=13.0",
     "textual>=0.70",
