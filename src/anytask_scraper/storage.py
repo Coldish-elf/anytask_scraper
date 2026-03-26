@@ -13,6 +13,12 @@ from anytask_scraper.parser import format_student_folder, strip_html
 logger = logging.getLogger(__name__)
 
 
+def _markdown_table_cell(value: object) -> str:
+    text = "" if value is None else str(value)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    return text.replace("|", r"\|").replace("\n", "<br>")
+
+
 def _resolve_output_path(
     output_dir: Path | str,
     default_filename: str,
@@ -35,6 +41,23 @@ def _resolve_output_path(
     if suffix and not Path(safe_name).suffix:
         safe_name = f"{safe_name}{suffix}"
     return output / safe_name
+
+
+def _format_colab_notebook_stem(submission: Submission) -> str:
+    student_part = (
+        format_student_folder(submission.student_name)
+        if submission.student_name
+        else str(submission.issue_id)
+    )
+    if student_part == "unknown":
+        student_part = str(submission.issue_id)
+
+    task_name = submission.task_title.strip()
+    task_part = format_student_folder(task_name) if task_name else f"task_{submission.issue_id}"
+    if task_part == "unknown":
+        task_part = f"task_{submission.issue_id}"
+
+    return f"{student_part}_{task_part}"
 
 
 def save_course_json(
@@ -115,7 +138,9 @@ def save_course_markdown(
                     "Status": task.status,
                     "Deadline": task.deadline.strftime("%Y-%m-%d %H:%M") if task.deadline else "",
                 }
-                lines.append("| " + " | ".join(row_data[c] for c in selected) + " |")
+                lines.append(
+                    "| " + " | ".join(_markdown_table_cell(row_data[c]) for c in selected) + " |"
+                )
             lines.append("")
         path.write_text("\n".join(lines), encoding="utf-8")
         logger.info("Saved course Markdown -> %s", path)
@@ -144,7 +169,19 @@ def _md_student_tasks(tasks: list[Task], lines: list[str]) -> None:
     lines.append("|---|-------|------:|--------|----------|")
     for i, task in enumerate(tasks, 1):
         score = str(task.score) if task.score is not None else "-"
-        lines.append(f"| {i} | {task.title} | {score} | {task.status} | {_md_deadline(task)} |")
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_table_cell(i),
+                    _markdown_table_cell(task.title),
+                    _markdown_table_cell(score),
+                    _markdown_table_cell(task.status),
+                    _markdown_table_cell(_md_deadline(task)),
+                ]
+            )
+            + " |"
+        )
 
     lines.append("")
     for task in tasks:
@@ -167,7 +204,18 @@ def _md_teacher_tasks(tasks: list[Task], lines: list[str]) -> None:
         lines.append("|---|-------|----------:|----------|")
         for i, task in enumerate(section_tasks, 1):
             max_score = str(task.max_score) if task.max_score is not None else "-"
-            lines.append(f"| {i} | {task.title} | {max_score} | {_md_deadline(task)} |")
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _markdown_table_cell(i),
+                        _markdown_table_cell(task.title),
+                        _markdown_table_cell(max_score),
+                        _markdown_table_cell(_md_deadline(task)),
+                    ]
+                )
+                + " |"
+            )
         lines.append("")
 
 
@@ -234,7 +282,9 @@ def save_queue_markdown(
                     "Updated": e.update_time,
                     "Grade": e.mark,
                 }
-                lines.append("| " + " | ".join(row_data[c] for c in selected) + " |")
+                lines.append(
+                    "| " + " | ".join(_markdown_table_cell(row_data[c]) for c in selected) + " |"
+                )
             lines.append("")
         path.write_text("\n".join(lines), encoding="utf-8")
         logger.info("Saved queue Markdown -> %s", path)
@@ -245,8 +295,19 @@ def save_queue_markdown(
         lines.append("|---|---------|------|--------|----------|---------|-------|")
         for i, e in enumerate(queue.entries, 1):
             lines.append(
-                f"| {i} | {e.student_name} | {e.task_title} | "
-                f"{e.status_name} | {e.responsible_name} | {e.update_time} | {e.mark} |"
+                "| "
+                + " | ".join(
+                    [
+                        _markdown_table_cell(i),
+                        _markdown_table_cell(e.student_name),
+                        _markdown_table_cell(e.task_title),
+                        _markdown_table_cell(e.status_name),
+                        _markdown_table_cell(e.responsible_name),
+                        _markdown_table_cell(e.update_time),
+                        _markdown_table_cell(e.mark),
+                    ]
+                )
+                + " |"
             )
         lines.append("")
 
@@ -491,7 +552,9 @@ def save_submissions_markdown(
                 "Deadline": str(sub.deadline) if sub.deadline is not None else "",
                 "Comments": str(len(sub.comments)),
             }
-            lines.append("| " + " | ".join(str(row_data[c]) for c in selected) + " |")
+            lines.append(
+                "| " + " | ".join(_markdown_table_cell(row_data[c]) for c in selected) + " |"
+            )
         lines.append("")
 
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -519,6 +582,7 @@ def download_submission_files(
     downloaded: dict[str, Path] = {}
     logger.debug("Downloading files for submission %d to %s", submission.issue_id, student_dir)
 
+    colab_stem = _format_colab_notebook_stem(submission)
     for comment in submission.comments:
         for file_att in comment.files:
             safe_name = Path(file_att.filename).name
@@ -534,13 +598,13 @@ def download_submission_files(
         for link in comment.links:
             if "colab.research.google.com" not in link:
                 continue
-            nb_name = f"colab_{submission.issue_id}.ipynb"
+            nb_name = f"{colab_stem}.ipynb"
             dest = student_dir / nb_name
             result = client.download_colab_notebook(link, str(dest))
             if result.success:
                 downloaded[link] = dest
             else:
-                url_file = student_dir / f"colab_{submission.issue_id}.url.txt"
+                url_file = student_dir / f"{colab_stem}.url.txt"
                 url_file.write_text(link)
                 downloaded[link] = url_file
 
@@ -635,7 +699,7 @@ def save_gradebook_markdown(
         all_columns = ["Group", "Student"] + all_tasks + ["Total"]
         selected = [c for c in all_columns if c in columns]
         if selected:
-            lines.append("| " + " | ".join(selected) + " |")
+            lines.append("| " + " | ".join(_markdown_table_cell(c) for c in selected) + " |")
             lines.append("|" + "|".join(["---"] * len(selected)) + "|")
             for group in gradebook.groups:
                 for entry in group.entries:
@@ -646,7 +710,11 @@ def save_gradebook_markdown(
                     }
                     for task in all_tasks:
                         row_data[task] = str(entry.scores.get(task, ""))
-                    lines.append("| " + " | ".join(row_data[c] for c in selected) + " |")
+                    lines.append(
+                        "| "
+                        + " | ".join(_markdown_table_cell(row_data[c]) for c in selected)
+                        + " |"
+                    )
             lines.append("")
         path.write_text("\n".join(lines), encoding="utf-8")
         logger.info("Saved gradebook Markdown -> %s", path)
@@ -657,14 +725,29 @@ def save_gradebook_markdown(
         lines.append(f"## {group.group_name}{teacher_info}")
         lines.append("")
 
-        header = "| # | Student | " + " | ".join(group.task_titles) + " | Total |"
+        header = (
+            "| # | Student | "
+            + " | ".join(_markdown_table_cell(title) for title in group.task_titles)
+            + " | Total |"
+        )
         sep = "|---|---------|" + "|".join(["------:" for _ in group.task_titles]) + "|------:|"
         lines.append(header)
         lines.append(sep)
 
         for i, entry in enumerate(group.entries, 1):
-            scores_str = " | ".join(str(entry.scores.get(t, "-")) for t in group.task_titles)
-            lines.append(f"| {i} | {entry.student_name} | {scores_str} | {entry.total_score} |")
+            scores = [_markdown_table_cell(entry.scores.get(t, "-")) for t in group.task_titles]
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        _markdown_table_cell(i),
+                        _markdown_table_cell(entry.student_name),
+                        *scores,
+                        _markdown_table_cell(entry.total_score),
+                    ]
+                )
+                + " |"
+            )
         lines.append("")
 
     path.write_text("\n".join(lines), encoding="utf-8")

@@ -67,7 +67,7 @@ Enabled in the CLI via `queue --download-files` (automatically enables `--deep`)
 What is downloaded:
 
 - attachments from comments
-- Colab links (`colab.research.google.com`) as `*.ipynb`
-- if Colab fails, `colab_{issue_id}.url.txt` is created with the original link.
+- Colab links (`colab.research.google.com`) as `last_first_task.ipynb`
+- if Colab fails, `last_first_task.url.txt` is created with the original link.
 
 Structure: `<output>/<student_or_issue>/...`.

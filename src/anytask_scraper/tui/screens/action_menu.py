@@ -20,15 +20,19 @@ class ActionMenuScreen(ModalScreen[str | None]):
         title: str = "Actions",
         copy_label: str = "Copy",
         teacher_mode: bool = False,
+        actions: list[tuple[str, str]] | None = None,
     ) -> None:
         super().__init__()
         self._title = title
         self._copy_label = copy_label
         self._teacher_mode = teacher_mode
+        self._actions = list(actions) if actions is not None else None
 
     def compose(self) -> ComposeResult:
         options: list[Option] = [Option(self._copy_label, id="copy")]
-        if self._teacher_mode:
+        if self._actions is not None:
+            options.extend(Option(label, id=action_id) for action_id, label in self._actions)
+        elif self._teacher_mode:
             options += [
                 Option("Accept & Rate", id="rate"),
                 Option("Set grade", id="grade"),

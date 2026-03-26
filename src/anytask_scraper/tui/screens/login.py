@@ -12,7 +12,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Input, Label
 
 from anytask_scraper.client import AnytaskClient, LoginError
-from anytask_scraper.tui.app import SESSION_FILE
+from anytask_scraper.tui.app import get_session_candidates
 
 if TYPE_CHECKING:
     from anytask_scraper.tui.app import AnytaskApp
@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 
 class LoginScreen(Screen[None]):
     app: AnytaskApp
+
+    def _get_session_candidates(self) -> list[Path]:
+        return get_session_candidates(self.app._load_settings())
+
+    def _get_existing_session_path(self) -> Path | None:
+        for candidate in self._get_session_candidates():
+            if candidate.exists():
+                return candidate
+        return None
 
     def compose(self) -> ComposeResult:
         with Center(), Vertical(id="login-box"):
@@ -37,8 +46,7 @@ class LoginScreen(Screen[None]):
 
             with Vertical(id="btn-row"):
                 yield Button("Login", variant="primary", id="login-btn")
-                session = Path(SESSION_FILE)
-                if session.exists():
+                if self._get_existing_session_path() is not None:
                     yield Button(
                         "Continue with saved session",
                         variant="default",
@@ -91,8 +99,8 @@ class LoginScreen(Screen[None]):
 
     @on(Button.Pressed, "#session-btn")
     def _handle_session(self) -> None:
-        path = Path(SESSION_FILE)
-        if not path.exists():
+        path = self._get_existing_session_path()
+        if path is None:
             self._set_status("Session file not found", "error")
             return
         self._set_status("Loading session...", "info")
@@ -105,7 +113,7 @@ class LoginScreen(Screen[None]):
             client = AnytaskClient(username=username, password=password)
             client.login()
             self.app.client = client
-            self.app.session_path = ""
+            self.app.session_path = str(self._get_session_candidates()[0])
             logger.info("TUI login successful for user %s", username)
             self.app.call_from_thread(self._set_status, f"Logged in as {username}", "success")
             self.app.call_from_thread(self._go_main)

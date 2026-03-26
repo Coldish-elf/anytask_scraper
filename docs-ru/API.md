@@ -76,15 +76,6 @@ anytask-scraper serve --session-file ~/.anytask_session.json
 
 Проверка статуса сервера.
 
-**Ответ:**
-
-```json
-{
-  "status": "ok",
-  "version": "0.8"
-}
-```
-
 ### Аутентификация
 
 #### `POST /auth/login`

@@ -3,8 +3,6 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +50,7 @@ from .state import AppState
 
 logger = logging.getLogger(__name__)
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 _bearer_dependency = Depends(_bearer_scheme)
@@ -96,19 +94,17 @@ def _handle_error(exc: Exception) -> HTTPException:
 
 
 def create_app(startup_session_file: str | None = None) -> FastAPI:
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        state = AppState(startup_session_file)
-        app.state.anytask = state
-        yield
-        state.logout()
-
     app = FastAPI(
         title="anytask-scraper API",
         version=VERSION,
-        lifespan=lifespan,
         dependencies=[Depends(_verify_token)],
     )
+    app.state.anytask = AppState(startup_session_file)
+
+    def _shutdown() -> None:
+        app.state.anytask.logout()
+
+    app.router.on_shutdown.append(_shutdown)
 
     _register_routes(app)
     return app
@@ -398,6 +394,7 @@ def _register_routes(app: FastAPI) -> None:
                 last_name_from=req.last_name_from,
                 last_name_to=req.last_name_to,
                 issue_id=req.issue_id,
+                name_list=req.name_list or None,
             )
             return pulled
         except HTTPException:

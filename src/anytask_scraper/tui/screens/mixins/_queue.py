@@ -11,7 +11,12 @@ from textual.widgets import Button, DataTable, Label
 
 from anytask_scraper.tui.widgets.filter_bar import QueueFilterBar
 
-from ._helpers import _QUEUE_STATUS_COLORS, _parse_mark, _parse_update_time
+from ._helpers import (
+    _QUEUE_STATUS_COLORS,
+    _parse_mark,
+    _parse_update_time,
+    resolve_accept_status_code,
+)
 
 if TYPE_CHECKING:
     from anytask_scraper.models import QueueEntry, Submission
@@ -30,11 +35,14 @@ class QueueMixin:
     _queue_sort_column: int | None
     _queue_sort_reverse: bool
     _queue_preview_submission: Submission | None
+    _queue_preview_issue_url: str
+    _queue_preview_token: int
     is_teacher_view: bool
 
     _show_status: Any
     _table_cursor_index: Any
     _push_submission_screen: Any
+    query_one: Any
 
     def _copy_queue_payload(self) -> tuple[str, str] | None:
         from anytask_scraper.tui.clipboard import format_queue_entry_for_clipboard
@@ -51,17 +59,49 @@ class QueueMixin:
 
     @on(QueueFilterBar.Changed)
     def _handle_queue_filter(self, event: QueueFilterBar.Changed) -> None:
-        needle = event.text.lower()
+        self._apply_queue_filter_values(
+            event.text,
+            event.student,
+            event.task,
+            event.status,
+            event.reviewer,
+        )
+
+    def _apply_queue_filter_values(
+        self,
+        text: str,
+        student: str,
+        task: str,
+        status: str,
+        reviewer: str,
+    ) -> None:
+        needle = text.lower()
         self.filtered_queue_entries = [
             e
             for e in self.all_queue_entries
             if (not needle or needle in e.student_name.lower() or needle in e.task_title.lower())
-            and (not event.student or e.student_name == event.student)
-            and (not event.task or e.task_title == event.task)
-            and (not event.status or e.status_name == event.status)
-            and (not event.reviewer or e.responsible_name == event.reviewer)
+            and (not student or e.student_name == student)
+            and (not task or e.task_title == task)
+            and (not status or e.status_name == status)
+            and (not reviewer or e.responsible_name == reviewer)
         ]
         self._rebuild_queue_table()
+
+    def _apply_queue_filters_from_widget(self) -> None:
+        bar = self.query_one("#queue-filter-bar", QueueFilterBar)  # type: ignore[attr-defined]
+        state = bar.save_state()
+
+        def _select_value(name: str) -> str:
+            value = state.get(name)
+            return value if isinstance(value, str) else ""
+
+        self._apply_queue_filter_values(
+            str(state.get("text", "")),
+            _select_value("student"),
+            _select_value("task"),
+            _select_value("status"),
+            _select_value("reviewer"),
+        )
 
     def _update_queue_filter_options(self) -> None:
         students = sorted({e.student_name for e in self.all_queue_entries if e.student_name})
@@ -84,8 +124,12 @@ class QueueMixin:
             None,
         )
         if entry and entry.has_issue_access and entry.issue_url:
-            self._load_queue_preview(entry)
+            self._queue_preview_issue_url = entry.issue_url
+            self._queue_preview_token += 1
+            self._load_queue_preview(entry, self._queue_preview_token, self._selected_course_id)
         elif entry:
+            self._queue_preview_issue_url = entry.issue_url
+            self._queue_preview_token += 1
             self._show_queue_preview_info(entry)
 
     @on(DataTable.RowSelected, "#queue-table")
@@ -101,6 +145,7 @@ class QueueMixin:
             self._fetch_and_show_submission(entry)
 
     def _show_queue_preview_info(self, entry: QueueEntry) -> None:
+        self._queue_preview_issue_url = entry.issue_url
         self._queue_preview_submission = None
         self._update_queue_action_bar()
         scroll = self.query_one("#queue-detail-scroll", VerticalScroll)  # type: ignore[attr-defined]
@@ -123,40 +168,102 @@ class QueueMixin:
         scroll.mount(Label(f"Grade: {entry.mark or '-'}", classes="detail-text"))
 
     @work(thread=True)
-    def _load_queue_preview(self, entry: QueueEntry) -> None:
+    def _load_queue_preview(
+        self,
+        entry: QueueEntry,
+        token: int,
+        course_id: int | None,
+    ) -> None:
         from anytask_scraper.parser import extract_issue_id_from_breadcrumb, parse_submission_page
 
         try:
-            if self._selected_course_id is not None:
-                cache = self.app.queue_cache.get(self._selected_course_id)
+            if course_id is not None:
+                cache = self.app.queue_cache.get(course_id)
                 if cache and entry.issue_url in cache.submissions:
                     sub = cache.submissions[entry.issue_url]
-                    self.app.call_from_thread(self._render_queue_preview, sub)
+                    self.app.call_from_thread(
+                        self._render_queue_preview_if_current,
+                        sub,
+                        entry.issue_url,
+                        token,
+                        course_id,
+                    )
                     return
 
             client = self.app.client
             if not client:
                 return
 
-            self.app.call_from_thread(self._show_queue_preview_loading, entry)
+            self.app.call_from_thread(
+                self._show_queue_preview_loading_if_current,
+                entry,
+                token,
+                course_id,
+            )
 
             html = client.fetch_submission_page(entry.issue_url)
             issue_id = extract_issue_id_from_breadcrumb(html)
             if issue_id == 0:
-                self.app.call_from_thread(self._show_queue_preview_info, entry)
+                self.app.call_from_thread(
+                    self._show_queue_preview_info_if_current,
+                    entry,
+                    token,
+                    course_id,
+                )
                 return
 
             sub = parse_submission_page(html, issue_id, issue_url=entry.issue_url)
 
-            if self._selected_course_id is not None:
-                cache = self.app.queue_cache.get(self._selected_course_id)
+            if course_id is not None:
+                cache = self.app.queue_cache.get(course_id)
                 if cache:
                     cache.submissions[entry.issue_url] = sub
 
-            self.app.call_from_thread(self._render_queue_preview, sub)
+            self.app.call_from_thread(
+                self._render_queue_preview_if_current,
+                sub,
+                entry.issue_url,
+                token,
+                course_id,
+            )
         except Exception:
             logger.debug("Failed to load queue preview", exc_info=True)
-            self.app.call_from_thread(self._show_queue_preview_info, entry)
+            self.app.call_from_thread(
+                self._show_queue_preview_info_if_current,
+                entry,
+                token,
+                course_id,
+            )
+
+    def _preview_request_is_current(
+        self,
+        issue_url: str,
+        token: int,
+        course_id: int | None,
+    ) -> bool:
+        return (
+            token == self._queue_preview_token
+            and issue_url == self._queue_preview_issue_url
+            and course_id == self._selected_course_id
+        )
+
+    def _show_queue_preview_loading_if_current(
+        self,
+        entry: QueueEntry,
+        token: int,
+        course_id: int | None,
+    ) -> None:
+        if self._preview_request_is_current(entry.issue_url, token, course_id):
+            self._show_queue_preview_loading(entry)
+
+    def _show_queue_preview_info_if_current(
+        self,
+        entry: QueueEntry,
+        token: int,
+        course_id: int | None,
+    ) -> None:
+        if self._preview_request_is_current(entry.issue_url, token, course_id):
+            self._show_queue_preview_info(entry)
 
     def _show_queue_preview_loading(self, entry: QueueEntry) -> None:
         scroll = self.query_one("#queue-detail-scroll", VerticalScroll)  # type: ignore[attr-defined]
@@ -241,14 +348,36 @@ class QueueMixin:
             )
         )
 
+    def _render_queue_preview_if_current(
+        self,
+        sub: Submission,
+        issue_url: str,
+        token: int,
+        course_id: int | None,
+    ) -> None:
+        if self._preview_request_is_current(issue_url, token, course_id):
+            self._render_queue_preview(sub)
+
     def _update_queue_action_bar(self) -> None:
         bar = self.query_one("#queue-action-bar", Horizontal)  # type: ignore[attr-defined]
         if self.is_teacher_view and self._queue_preview_submission is not None:
             bar.remove_class("hidden")
         else:
             bar.add_class("hidden")
+            return
+
+        sub = self._queue_preview_submission
+        accepted_code = resolve_accept_status_code(sub.status_options)
+        self.query_one("#queue-btn-rate", Button).disabled = not (
+            sub.has_grade_form and sub.has_status_form and accepted_code is not None
+        )  # type: ignore[attr-defined]
+        self.query_one("#queue-btn-grade", Button).disabled = not sub.has_grade_form  # type: ignore[attr-defined]
+        self.query_one("#queue-btn-status", Button).disabled = not sub.has_status_form  # type: ignore[attr-defined]
+        self.query_one("#queue-btn-comment", Button).disabled = not sub.has_comment_form  # type: ignore[attr-defined]
 
     def _clear_queue_detail(self) -> None:
+        self._queue_preview_token += 1
+        self._queue_preview_issue_url = ""
         self._queue_preview_submission = None
         self._update_queue_action_bar()
         scroll = self.query_one("#queue-detail-scroll", VerticalScroll)  # type: ignore[attr-defined]
@@ -267,10 +396,19 @@ class QueueMixin:
         if sub.max_score:
             with suppress(ValueError):
                 max_score_value = float(sub.max_score)
+        accepted_code = resolve_accept_status_code(sub.status_options)
+        if accepted_code is None:
+            self._show_status("Accepted status is unavailable for this submission", kind="warning")
+            return
         issue_url = sub.issue_url
         self.app.push_screen(
             AcceptAndRateScreen(max_score=max_score_value),
-            lambda result: self._queue_write_accept_and_rate(sub.issue_id, result, issue_url),
+            lambda result: self._queue_write_accept_and_rate(
+                sub.issue_id,
+                result,
+                issue_url,
+                accepted_code,
+            ),
         )
 
     @on(Button.Pressed, "#queue-btn-grade")
@@ -301,7 +439,7 @@ class QueueMixin:
 
         issue_url = sub.issue_url
         self.app.push_screen(
-            StatusSelectScreen(),
+            StatusSelectScreen(sub.status_options, sub.current_status),
             lambda code: self._queue_write_status(sub.issue_id, code, issue_url),
         )
 
@@ -320,11 +458,21 @@ class QueueMixin:
         )
 
     def _queue_write_accept_and_rate(
-        self, issue_id: int, result: tuple[float, str] | None, issue_url: str = ""
+        self,
+        issue_id: int,
+        result: tuple[float, str] | None,
+        issue_url: str = "",
+        accepted_status: int | None = None,
     ) -> None:
-        if result is not None:
+        if result is not None and accepted_status is not None:
             grade, comment = result
-            self._do_queue_accept_and_rate(issue_id, grade, comment, issue_url)
+            self._do_queue_accept_and_rate(
+                issue_id,
+                grade,
+                comment,
+                issue_url,
+                accepted_status,
+            )
 
     def _queue_write_grade(self, issue_id: int, value: float | None, issue_url: str = "") -> None:
         if value is not None:
@@ -365,6 +513,7 @@ class QueueMixin:
             if result.success:
                 self.app.call_from_thread(self._show_status, result.message, kind="success")
                 self._invalidate_queue_submission_cache(issue_id)
+                self.app.call_from_thread(self._refresh_queue_after_write, issue_id)
             else:
                 self.app.call_from_thread(self._show_status, result.message, kind="error")
         except Exception as e:
@@ -372,27 +521,41 @@ class QueueMixin:
 
     @work(thread=True)
     def _do_queue_accept_and_rate(
-        self, issue_id: int, grade: float, comment: str, issue_url: str = ""
+        self,
+        issue_id: int,
+        grade: float,
+        comment: str,
+        issue_url: str = "",
+        accepted_status: int = 5,
     ) -> None:
         client = self.app.client
         if not client:
             return
         errors: list[str] = []
+        had_success = False
         try:
             result = client.set_grade(issue_id, grade, issue_url=issue_url)
             if not result.success:
                 errors.append(f"Grade: {result.message}")
+            else:
+                had_success = True
 
-            result = client.set_status(issue_id, 5, issue_url=issue_url)
+            result = client.set_status(issue_id, accepted_status, issue_url=issue_url)
             if not result.success:
                 errors.append(f"Status: {result.message}")
+            else:
+                had_success = True
 
             if comment:
                 result = client.add_comment(issue_id, comment, issue_url=issue_url)
                 if not result.success:
                     errors.append(f"Comment: {result.message}")
+                else:
+                    had_success = True
 
             self._invalidate_queue_submission_cache(issue_id)
+            if had_success:
+                self.app.call_from_thread(self._refresh_queue_after_write, issue_id)
 
             if errors:
                 msg = "; ".join(errors)
@@ -502,10 +665,9 @@ class QueueMixin:
         if self._selected_course_id in cache:
             queue = cache[self._selected_course_id]
             self.all_queue_entries = list(queue.entries)
-            self.filtered_queue_entries = list(queue.entries)
             self._queue_loaded_for = self._selected_course_id
             self._update_queue_filter_options()
-            self._rebuild_queue_table()
+            self._apply_queue_filters_from_widget()
             self.query_one("#queue-info-label", Label).update(f"{len(queue.entries)} entries")  # type: ignore[attr-defined]
             return
 
@@ -513,7 +675,7 @@ class QueueMixin:
         self._fetch_queue(self._selected_course_id)
 
     @work(thread=True)
-    def _fetch_queue(self, course_id: int) -> None:
+    def _fetch_queue(self, course_id: int, focus_issue_id: int | None = None) -> None:
         from anytask_scraper.models import QueueEntry, ReviewQueue
         from anytask_scraper.parser import extract_csrf_from_queue_page
 
@@ -548,12 +710,13 @@ class QueueMixin:
             self.app.queue_cache[course_id] = queue
 
             self.all_queue_entries = entries
-            self.filtered_queue_entries = list(entries)
             self._queue_loaded_for = course_id
 
             self.app.call_from_thread(self._update_queue_filter_options)
-            self.app.call_from_thread(self._rebuild_queue_table)
+            self.app.call_from_thread(self._apply_queue_filters_from_widget)
             self.app.call_from_thread(self._update_queue_info, f"{len(entries)} entries")
+            if focus_issue_id is not None:
+                self.app.call_from_thread(self._restore_queue_preview_by_issue_id, focus_issue_id)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
                 self.app.call_from_thread(self._disable_queue_tab)
@@ -586,6 +749,32 @@ class QueueMixin:
     def _enable_queue_tab(self) -> None:
         self.query_one("#queue-filter-bar", QueueFilterBar).disabled = False  # type: ignore[attr-defined]
         self.query_one("#queue-table", DataTable).disabled = False  # type: ignore[attr-defined]
+
+    def _refresh_queue_after_write(self, issue_id: int) -> None:
+        if self._selected_course_id is None:
+            return
+        self._queue_loaded_for = None
+        self.query_one("#queue-info-label", Label).update("Refreshing queue...")  # type: ignore[attr-defined]
+        self._fetch_queue(self._selected_course_id, focus_issue_id=issue_id)
+
+    def _restore_queue_preview_by_issue_id(self, issue_id: int) -> None:
+        entry = next(
+            (
+                item
+                for item in self.filtered_queue_entries
+                if item.issue_url.endswith(f"/{issue_id}")
+            ),
+            None,
+        )
+        if entry is None:
+            self._clear_queue_detail()
+            return
+        if not entry.has_issue_access or not entry.issue_url:
+            self._show_queue_preview_info(entry)
+            return
+        self._queue_preview_issue_url = entry.issue_url
+        self._queue_preview_token += 1
+        self._load_queue_preview(entry, self._queue_preview_token, self._selected_course_id)
 
     @work(thread=True)
     def _fetch_and_show_submission(self, entry: QueueEntry) -> None:

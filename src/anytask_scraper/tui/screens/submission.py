@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from textual import events, on, work
@@ -17,6 +18,7 @@ from anytask_scraper.parser import (
     strip_html,
 )
 from anytask_scraper.tui.clipboard import copy_text_to_clipboard, format_submission_for_clipboard
+from anytask_scraper.tui.screens.mixins._helpers import resolve_accept_status_code
 
 if TYPE_CHECKING:
     from anytask_scraper.tui.app import AnytaskApp
@@ -55,14 +57,25 @@ class GradeInputScreen(ModalScreen[float | None]):
 
 
 class StatusSelectScreen(ModalScreen[int | None]):
-    STATUS_OPTIONS = [(3, "На проверке"), (4, "На доработке"), (5, "Зачтено")]
+    def __init__(
+        self,
+        status_options: list[tuple[int, str]],
+        current_status: int = 0,
+    ) -> None:
+        super().__init__()
+        self.status_options = list(status_options)
+        self.current_status = current_status
 
     def compose(self) -> ComposeResult:
         with Vertical(id="status-modal"):
             yield Label("Select status:")
             with RadioSet(id="status-set"):
-                for code, label in self.STATUS_OPTIONS:
-                    yield RadioButton(f"{label} ({code})", id=f"status-{code}")
+                for code, label in self.status_options:
+                    yield RadioButton(
+                        f"{label} ({code})",
+                        id=f"status-{code}",
+                        value=(code == self.current_status),
+                    )
             with Horizontal(id="status-modal-buttons"):
                 yield Button("Submit", variant="primary", id="status-submit")
                 yield Button("Cancel", id="status-cancel")
@@ -160,14 +173,22 @@ class SubmissionScreen(Screen[None]):
         Binding("k", "scroll_up", "Up", show=False),
     ]
 
-    def __init__(self, submission: Submission, *, teacher_mode: bool = False) -> None:
+    def __init__(
+        self,
+        submission: Submission,
+        *,
+        teacher_mode: bool = False,
+        on_submission_refreshed: Callable[[Submission], None] | None = None,
+    ) -> None:
         super().__init__()
         self.submission = submission
         self.teacher_mode = teacher_mode
         self._action_menu_open = False
+        self._on_submission_refreshed = on_submission_refreshed
 
     def compose(self) -> ComposeResult:
         sub = self.submission
+        can_rate = self._can_accept_and_rate()
 
         yield Static(
             f"Issue {sub.issue_id}: {sub.task_title}",
@@ -242,10 +263,15 @@ class SubmissionScreen(Screen[None]):
 
         if self.teacher_mode:
             with Horizontal(id="sub-action-bar"):
-                yield Button("Accept & Rate", variant="success", id="sub-btn-rate")
-                yield Button("Grade", id="sub-btn-grade")
-                yield Button("Status", id="sub-btn-status")
-                yield Button("Comment", id="sub-btn-comment")
+                yield Button(
+                    "Accept & Rate",
+                    variant="success",
+                    id="sub-btn-rate",
+                    disabled=not can_rate,
+                )
+                yield Button("Grade", id="sub-btn-grade", disabled=not sub.has_grade_form)
+                yield Button("Status", id="sub-btn-status", disabled=not sub.has_status_form)
+                yield Button("Comment", id="sub-btn-comment", disabled=not sub.has_comment_form)
 
         hints = "[dim]Esc[/dim] Back  [dim]Ctrl+Y[/dim] Copy  [dim]j/k[/dim] Scroll"
         if self.teacher_mode:
@@ -272,7 +298,7 @@ class SubmissionScreen(Screen[None]):
             ActionMenuScreen(
                 title="Submission actions",
                 copy_label="Copy submission",
-                teacher_mode=self.teacher_mode,
+                actions=self._teacher_actions() if self.teacher_mode else None,
             ),
             self._handle_action_menu_result,
         )
@@ -291,6 +317,9 @@ class SubmissionScreen(Screen[None]):
             self._open_comment_modal()
 
     def _open_grade_modal(self) -> None:
+        if not self.submission.has_grade_form:
+            self.notify("Grade action is unavailable for this submission", severity="warning")
+            return
         max_score_value: float | None = None
         if self.submission.max_score:
             with contextlib.suppress(ValueError):
@@ -301,12 +330,27 @@ class SubmissionScreen(Screen[None]):
         )
 
     def _open_status_modal(self) -> None:
-        self.app.push_screen(StatusSelectScreen(), self._on_status_select)
+        if not self.submission.has_status_form or not self.submission.status_options:
+            self.notify("Status action is unavailable for this submission", severity="warning")
+            return
+        self.app.push_screen(
+            StatusSelectScreen(
+                self.submission.status_options,
+                self.submission.current_status,
+            ),
+            self._on_status_select,
+        )
 
     def _open_comment_modal(self) -> None:
+        if not self.submission.has_comment_form:
+            self.notify("Comment action is unavailable for this submission", severity="warning")
+            return
         self.app.push_screen(CommentInputScreen(), self._on_comment_input)
 
     def _open_rate_modal(self) -> None:
+        if not self._can_accept_and_rate():
+            self.notify("Accept & Rate is unavailable for this submission", severity="warning")
+            return
         max_score_value: float | None = None
         if self.submission.max_score:
             with contextlib.suppress(ValueError):
@@ -370,9 +414,38 @@ class SubmissionScreen(Screen[None]):
     def action_scroll_up(self) -> None:
         self.query_one("#sub-scroll", VerticalScroll).scroll_up()
 
+    def _teacher_actions(self) -> list[tuple[str, str]]:
+        actions: list[tuple[str, str]] = []
+        if self._can_accept_and_rate():
+            actions.append(("rate", "Accept & Rate"))
+        if self.submission.has_grade_form:
+            actions.append(("grade", "Set grade"))
+        if self.submission.has_status_form and self.submission.status_options:
+            actions.append(("status", "Set status"))
+        if self.submission.has_comment_form:
+            actions.append(("comment", "Add comment"))
+        return actions
+
+    def _can_accept_and_rate(self) -> bool:
+        return (
+            self.submission.has_grade_form
+            and self.submission.has_status_form
+            and resolve_accept_status_code(self.submission.status_options) is not None
+        )
+
     def _rebuild_ui(self) -> None:
-        new_screen = SubmissionScreen(self.submission, teacher_mode=self.teacher_mode)
+        new_screen = SubmissionScreen(
+            self.submission,
+            teacher_mode=self.teacher_mode,
+            on_submission_refreshed=self._on_submission_refreshed,
+        )
         self.app.switch_screen(new_screen)
+
+    def _apply_refreshed_submission(self, submission: Submission) -> None:
+        self.submission = submission
+        if self._on_submission_refreshed is not None:
+            self._on_submission_refreshed(submission)
+        self._rebuild_ui()
 
     @work(thread=True)
     def _refresh_submission(self) -> None:
@@ -388,7 +461,7 @@ class SubmissionScreen(Screen[None]):
         except Exception as e:
             self.app.call_from_thread(self.notify, f"Refresh failed: {e}", severity="warning")
             return
-        self.app.call_from_thread(self._rebuild_ui)
+        self.app.call_from_thread(self._apply_refreshed_submission, self.submission)
 
     @work(thread=True)
     def _submit_grade(self, grade: float) -> None:
@@ -457,6 +530,14 @@ class SubmissionScreen(Screen[None]):
             return
         issue_id = self.submission.issue_id
         url = self.submission.issue_url
+        accepted_status = resolve_accept_status_code(self.submission.status_options)
+        if accepted_status is None:
+            self.app.call_from_thread(
+                self.notify,
+                "Accepted status is unavailable for this submission",
+                severity="warning",
+            )
+            return
         errors: list[str] = []
 
         try:
@@ -464,7 +545,7 @@ class SubmissionScreen(Screen[None]):
             if not result.success:
                 errors.append(f"Grade: {result.message}")
 
-            result = client.set_status(issue_id, 5, issue_url=url)
+            result = client.set_status(issue_id, accepted_status, issue_url=url)
             if not result.success:
                 errors.append(f"Status: {result.message}")
 

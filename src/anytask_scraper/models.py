@@ -132,6 +132,11 @@ class Submission:
     max_score: str = ""
     deadline: str = ""
     issue_url: str = ""
+    current_status: int = 0
+    status_options: list[tuple[int, str]] = field(default_factory=list)
+    has_grade_form: bool = False
+    has_status_form: bool = False
+    has_comment_form: bool = False
     comments: list[Comment] = field(default_factory=list)
 
 

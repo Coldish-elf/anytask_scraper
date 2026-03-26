@@ -118,6 +118,25 @@ class TestExtractSubmissionFormsHard:
     def test_issue_id(self) -> None:
         assert self.forms.issue_id == 500003
 
+    def test_ignores_non_numeric_status_options(self) -> None:
+        html = _submission_with_forms(
+            has_status=True,
+            status_options=[
+                (3, "На проверке", False),
+                (5, "Зачтено", True),
+            ],
+            issue_id=500003,
+        ).replace(
+            '<select name="status">',
+            '<select name="status"><option value="">Выберите статус</option>',
+            1,
+        )
+
+        forms = extract_submission_forms(html)
+
+        assert forms.status_options == [(3, "На проверке"), (5, "Зачтено")]
+        assert forms.current_status == 5
+
 
 class TestExtractSubmissionFormsFile:
     def setup_method(self) -> None:

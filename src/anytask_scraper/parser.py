@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import unescape
 
 from bs4 import BeautifulSoup, Tag
@@ -288,6 +288,7 @@ def parse_submission_page(html: str, issue_id: int, issue_url: str = "") -> Subm
     soup = BeautifulSoup(html, "lxml")
     meta = _parse_submission_metadata(soup)
     comments = _parse_comment_thread(soup)
+    forms = extract_submission_forms(html)
 
     return Submission(
         issue_id=issue_id,
@@ -301,6 +302,11 @@ def parse_submission_page(html: str, issue_id: int, issue_url: str = "") -> Subm
         max_score=meta.get("max_score", ""),
         deadline=meta.get("deadline", ""),
         issue_url=issue_url,
+        current_status=forms.current_status,
+        status_options=list(forms.status_options),
+        has_grade_form=forms.has_grade_form,
+        has_status_form=forms.has_status_form,
+        has_comment_form=forms.has_comment_form,
         comments=comments,
     )
 
@@ -453,8 +459,11 @@ def _parse_comment_timestamp(text: str) -> datetime | None:
     month = _RU_MONTHS.get(month_name)
     if month is None:
         return None
-    year = datetime.now().year
-    return datetime(year, month, day, hour, minute)
+    now = datetime.now()
+    candidate = datetime(now.year, month, day, hour, minute)
+    if candidate - now > timedelta(days=31):
+        candidate = datetime(now.year - 1, month, day, hour, minute)
+    return candidate
 
 
 def _parse_comment_files(container: Tag) -> list[FileAttachment]:
@@ -702,7 +711,10 @@ def extract_submission_forms(html: str) -> SubmissionForms:
             for opt in select.find_all("option"):
                 val = opt.get("value", "")
                 if val:
-                    code = int(str(val))
+                    try:
+                        code = int(str(val))
+                    except ValueError:
+                        continue
                     label = opt.get_text(strip=True)
                     status_options.append((code, label))
                     if opt.get("selected") is not None:

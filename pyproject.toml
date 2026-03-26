@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anytask-scraper"
-version = "1.0.0"
+version = "1.1.1"
 description = "CLI, TUI and Python library for anytask.org"
 readme = {file = "README.md", content-type = "text/markdown"}
 license = "MIT"

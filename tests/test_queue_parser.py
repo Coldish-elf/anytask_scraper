@@ -1,3 +1,6 @@
+from datetime import datetime
+
+import anytask_scraper.parser as parser_mod
 from anytask_scraper.parser import (
     extract_csrf_from_queue_page,
     extract_issue_id_from_breadcrumb,
@@ -11,6 +14,9 @@ from .html_builders import (
     SubmissionFile,
     build_queue_page,
     build_submission_page,
+)
+from .html_builders import (
+    SubmissionForms as BuilderForms,
 )
 
 
@@ -272,6 +278,57 @@ class TestSubmissionHarder:
 
     def test_deadline(self) -> None:
         assert "17-01-2026" in self.sub.deadline
+
+
+def test_parse_submission_page_keeps_form_metadata() -> None:
+    html = build_submission_page(
+        issue_id=500005,
+        task_title="Final Project",
+        status="На проверке",
+        max_score="20",
+        forms=BuilderForms(
+            has_grade_form=True,
+            has_status_form=True,
+            has_comment_form=True,
+            max_score="20",
+            status_options=[(3, "На проверке", False), (7, "Accepted", True)],
+            issue_id=500005,
+        ),
+    )
+
+    sub = parse_submission_page(html, 500005, issue_url="/issue/500005")
+
+    assert sub.issue_url == "/issue/500005"
+    assert sub.has_grade_form is True
+    assert sub.has_status_form is True
+    assert sub.has_comment_form is True
+    assert sub.current_status == 7
+    assert sub.status_options == [(3, "На проверке"), (7, "Accepted")]
+
+
+def test_comment_timestamp_uses_previous_year_near_year_rollover(monkeypatch) -> None:
+    class _FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[override]
+            return cls(2026, 1, 2, 12, 0, tzinfo=tz)
+
+    monkeypatch.setattr(parser_mod, "datetime", _FrozenDateTime)
+    html = build_submission_page(
+        issue_id=500006,
+        task_title="Join",
+        comments=[
+            SubmissionComment(
+                author_name="Иван Иванов",
+                author_url="/users/ivanov/",
+                timestamp="31 Дек 23:50",
+                content_html="<p>late upload</p>",
+            )
+        ],
+    )
+
+    sub = parse_submission_page(html, 500006)
+
+    assert sub.comments[0].timestamp == datetime(2025, 12, 31, 23, 50)
 
 
 class TestSubmissionAttachmentDownloadVariants:

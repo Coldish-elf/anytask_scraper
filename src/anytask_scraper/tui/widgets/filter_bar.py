@@ -123,16 +123,21 @@ class TaskFilterBar(Widget):
         statuses: list[str],
         sections: list[str],
     ) -> None:
+        text_input = self.query_one("#task-filter-text", Input)
+        status_select = self.query_one("#task-filter-status", Select)
+        section_select = self.query_one("#task-filter-section", Select)
+        current_text = text_input.value
+        current_status = status_select.value
+        current_section = section_select.value
+
         self._statuses = statuses
         self._sections = sections
 
-        status_select = self.query_one("#task-filter-status", Select)
         status_select.set_options([(s, s) for s in statuses])
-
-        section_select = self.query_one("#task-filter-section", Select)
         section_select.set_options([(s, s) for s in sections])
-
-        self.query_one("#task-filter-text", Input).value = ""
+        status_select.value = current_status if current_status in set(statuses) else Select.BLANK
+        section_select.value = current_section if current_section in set(sections) else Select.BLANK
+        text_input.value = current_text
 
 
 class QueueFilterBar(Widget):
@@ -287,20 +292,36 @@ class QueueFilterBar(Widget):
         statuses: list[str],
         reviewers: list[str] | None = None,
     ) -> None:
+        text_input = self.query_one("#queue-filter-text", Input)
+        student_select = self.query_one("#queue-filter-student", Select)
+        task_select = self.query_one("#queue-filter-task", Select)
+        status_select = self.query_one("#queue-filter-status", Select)
+        reviewer_select = self.query_one("#queue-filter-reviewer", Select)
+        current_text = text_input.value
+        current_student = student_select.value
+        current_task = task_select.value
+        current_status = status_select.value
+        current_reviewer = reviewer_select.value
+
         self._students = students
         self._tasks = tasks
         self._statuses = statuses
         if reviewers is not None:
             self._reviewers = reviewers
 
-        self.query_one("#queue-filter-student", Select).set_options([(s, s) for s in students])
-        self.query_one("#queue-filter-task", Select).set_options([(t, t) for t in tasks])
-        self.query_one("#queue-filter-status", Select).set_options([(s, s) for s in statuses])
+        student_select.set_options([(s, s) for s in students])
+        task_select.set_options([(t, t) for t in tasks])
+        status_select.set_options([(s, s) for s in statuses])
         if reviewers is not None:
-            self.query_one("#queue-filter-reviewer", Select).set_options(
-                [(r, r) for r in reviewers]
-            )
-        self.query_one("#queue-filter-text", Input).value = ""
+            reviewer_select.set_options([(r, r) for r in reviewers])
+        student_select.value = current_student if current_student in set(students) else Select.BLANK
+        task_select.value = current_task if current_task in set(tasks) else Select.BLANK
+        status_select.value = current_status if current_status in set(statuses) else Select.BLANK
+        current_reviewers = set(reviewers or self._reviewers)
+        reviewer_select.value = (
+            current_reviewer if current_reviewer in current_reviewers else Select.BLANK
+        )
+        text_input.value = current_text
 
 
 class GradebookFilterBar(Widget):
@@ -417,9 +438,18 @@ class GradebookFilterBar(Widget):
         groups: list[str],
         teachers: list[str],
     ) -> None:
+        text_input = self.query_one("#gb-filter-text", Input)
+        group_select = self.query_one("#gb-filter-group", Select)
+        teacher_select = self.query_one("#gb-filter-teacher", Select)
+        current_text = text_input.value
+        current_group = group_select.value
+        current_teacher = teacher_select.value
+
         self._groups = groups
         self._teachers = teachers
 
-        self.query_one("#gb-filter-group", Select).set_options([(g, g) for g in groups])
-        self.query_one("#gb-filter-teacher", Select).set_options([(t, t) for t in teachers])
-        self.query_one("#gb-filter-text", Input).value = ""
+        group_select.set_options([(g, g) for g in groups])
+        teacher_select.set_options([(t, t) for t in teachers])
+        group_select.value = current_group if current_group in set(groups) else Select.BLANK
+        teacher_select.value = current_teacher if current_teacher in set(teachers) else Select.BLANK
+        text_input.value = current_text

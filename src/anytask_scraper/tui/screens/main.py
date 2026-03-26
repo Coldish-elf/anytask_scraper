@@ -127,6 +127,8 @@ class MainScreen(ExportMixin, GradebookMixin, QueueMixin, TasksMixin, CoreMixin,
         self._queue_sort_column: int | None = None
         self._queue_sort_reverse = False
         self._queue_preview_submission: Submission | None = None
+        self._queue_preview_token = 0
+        self._queue_preview_issue_url = ""
         self._gradebook_loaded_for: int | None = None
         self.all_gradebook_groups: list[GradebookGroup] = []
         self.filtered_gradebook_groups: list[GradebookGroup] = []

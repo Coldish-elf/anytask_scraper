@@ -126,3 +126,18 @@ def _extract_filter_text(
     if isinstance(value, str):
         return value.strip()
     return ""
+
+
+def resolve_accept_status_code(status_options: list[tuple[int, str]]) -> int | None:
+    for code, _label in status_options:
+        if code == 5:
+            return code
+
+    for code, label in status_options:
+        text = label.casefold()
+        if "не зач" in text or "not accept" in text:
+            continue
+        if "зач" in text or "accept" in text:
+            return code
+
+    return None

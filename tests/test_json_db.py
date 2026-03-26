@@ -138,6 +138,50 @@ def test_sync_queue_with_submission_tracks_files_and_issue_chain(tmp_path: Path)
     assert len(assignment_after["issue_chain"]) == chain_len
 
 
+def test_sync_queue_comment_dedup_is_stable_when_older_comment_is_inserted(tmp_path: Path) -> None:
+    db = QueueJsonDB(tmp_path / "queue_db.json")
+
+    first_submission = _submission()
+    db.sync_queue(
+        ReviewQueue(
+            course_id=1250,
+            entries=[_entry()],
+            submissions={"/issue/421525": first_submission},
+        )
+    )
+    before = db.snapshot()
+    assignment_before = before["courses"]["1250"]["students"]["/users/alice/"]["assignments"][
+        "issue:421525"
+    ]
+
+    inserted_comment = Comment(
+        author_name="Alice Smith",
+        author_url="/users/alice/",
+        timestamp=datetime(2026, 2, 28, 9, 45),
+        content_html="<p>follow-up</p>",
+    )
+    second_submission = _submission()
+    second_submission.comments.insert(1, inserted_comment)
+
+    db.sync_queue(
+        ReviewQueue(
+            course_id=1250,
+            entries=[_entry()],
+            submissions={"/issue/421525": second_submission},
+        )
+    )
+    after = db.snapshot()
+    assignment_after = after["courses"]["1250"]["students"]["/users/alice/"]["assignments"][
+        "issue:421525"
+    ]
+
+    texts = [event.get("content_text", "") for event in assignment_after["issue_chain"]]
+
+    assert len(assignment_after["issue_chain"]) == len(assignment_before["issue_chain"]) + 1
+    assert texts.count("follow-up") == 1
+    assert texts.count("Статус изменен: Accepted") == 1
+
+
 def test_record_issue_write_appends_issue_chain_event(tmp_path: Path) -> None:
     db = QueueJsonDB(tmp_path / "queue_db.json")
     db.sync_queue(ReviewQueue(course_id=1250, entries=[_entry()]))

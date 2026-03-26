@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
-from anytask_scraper.cli import _build_parser, main
+from anytask_scraper.cli import _build_parser, _run_db_sync_once, main
 from anytask_scraper.json_db import QueueJsonDB
 from anytask_scraper.models import QueueEntry, ReviewQueue
 
@@ -172,3 +174,53 @@ def test_main_db_pull_process_write_without_credentials(tmp_path: Path) -> None:
     assert len(write_events) == 1
     assert write_events[0]["action"] == "grade"
     assert write_events[0]["value"] == "10/10"
+
+
+def test_db_sync_pull_passes_name_list_to_db() -> None:
+    args = SimpleNamespace(
+        course=1250,
+        filter_task="",
+        filter_reviewer="",
+        filter_status="",
+        last_name_from="",
+        last_name_to="",
+        deep=False,
+        db_file="queue_db.json",
+        course_title="Python",
+        pull=True,
+        limit=1,
+        student_contains="",
+        task_contains="",
+        status_contains="",
+        reviewer_contains="",
+        pull_last_name_from="",
+        pull_last_name_to="",
+        issue_id=None,
+        format="table",
+    )
+    fake_db = MagicMock()
+    fake_db.sync_queue.return_value = 1
+    fake_db.pull_new_entries.return_value = []
+
+    with (
+        patch("anytask_scraper.cli._resolve_name_list", return_value=["Alice Smith"]),
+        patch(
+            "anytask_scraper.cli._fetch_review_queue",
+            return_value=(ReviewQueue(course_id=1250, entries=[]), 0),
+        ),
+        patch("anytask_scraper.cli.QueueJsonDB", return_value=fake_db),
+    ):
+        _run_db_sync_once(args, client=MagicMock())
+
+    fake_db.pull_new_entries.assert_called_once_with(
+        course_id=1250,
+        limit=1,
+        student_contains="",
+        task_contains="",
+        status_contains="",
+        reviewer_contains="",
+        last_name_from="",
+        last_name_to="",
+        issue_id=None,
+        name_list=["Alice Smith"],
+    )

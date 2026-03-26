@@ -732,8 +732,8 @@ class QueueJsonDB:
 
         assignment["files"] = self._collect_files(submission.comments)
 
-        for idx, comment in enumerate(submission.comments):
-            event = self._comment_event(course_id, assignment_key, submission, comment, idx)
+        for comment in submission.comments:
+            event = self._comment_event(course_id, assignment_key, submission, comment)
             self._append_issue_chain_event(assignment, event)
 
         return assignment
@@ -757,10 +757,11 @@ class QueueJsonDB:
         assignment_key: str,
         submission: Submission,
         comment: Comment,
-        idx: int,
     ) -> dict[str, Any]:
         timestamp = _dt_to_iso(comment.timestamp)
-        file_names = ",".join(file_att.filename for file_att in comment.files)
+        file_refs = ",".join(
+            f"{file_att.filename}|{file_att.download_url}" for file_att in comment.files
+        )
         links = ",".join(comment.links)
         content_text = strip_html(comment.content_html) if comment.content_html else ""
 
@@ -770,11 +771,13 @@ class QueueJsonDB:
             assignment_key,
             str(submission.issue_id),
             event_type,
-            str(idx),
             timestamp,
             comment.author_name,
+            comment.author_url,
+            comment.content_html,
             content_text,
-            file_names,
+            str(comment.is_after_deadline),
+            file_refs,
             links,
         )
         return {

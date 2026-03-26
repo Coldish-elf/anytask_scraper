@@ -19,7 +19,7 @@
 ```json
 {
   "credentials_file": "./credentials.json",
-  "session_file": "./.anytask_session.json",
+  "session_file": "~/.config/anytask-scraper/session.json",
   "status_mode": "errors",
   "default_output": "./output",
   "save_session": true,
@@ -29,12 +29,14 @@
 }
 ```
 
+При включённом `auto_login_session` TUI также проверяет старый файл `.anytask_session.json` как fallback для миграции.
+
 Описание ключей:
 
 | Ключ | Тип | Назначение |
 | --- | --- | --- |
 | `credentials_file` | `string` | Файл с `username`/`password`. |
-| `session_file` | `string` | Файл cookie-сессии. |
+| `session_file` | `string` | Файл cookie-сессии. По умолчанию: `~/.config/anytask-scraper/session.json`. |
 | `status_mode` | `all` или `errors` | Показывать все статусные сообщения CLI или только ошибки. |
 | `default_output` | `string` | Базовая папка экспорта для `course`/`queue`/`gradebook`. |
 | `save_session` | `boolean` | Сохранять сессию после команды (если задан `session_file`). |

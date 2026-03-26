@@ -42,6 +42,7 @@ class DBPullRequest(BaseModel):
     last_name_from: str = ""
     last_name_to: str = ""
     issue_id: int | None = None
+    name_list: list[str] = []
 
 
 class DBMarkPulledRequest(BaseModel):
@@ -141,6 +142,7 @@ class SubmissionSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     issue_id: int
+    issue_url: str = ""
     task_title: str
     student_name: str = ""
     student_url: str = ""

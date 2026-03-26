@@ -19,7 +19,7 @@ Example:
 ```json
 {
   "credentials_file": "./credentials.json",
-  "session_file": "./.anytask_session.json",
+  "session_file": "~/.config/anytask-scraper/session.json",
   "status_mode": "errors",
   "default_output": "./output",
   "save_session": true,
@@ -29,12 +29,14 @@ Example:
 }
 ```
 
+The TUI still checks the legacy `.anytask_session.json` file as a migration fallback when auto-login is enabled.
+
 Description of keys:
 
 | Key | Type | Destination |
 | --- | --- | --- |
 | `credentials_file` | `string` | File with `username`/`password`. |
-| `session_file` | `string` | Session cookie. |
+| `session_file` | `string` | Session cookie. Default: `~/.config/anytask-scraper/session.json`. |
 | `status_mode` | `all` or `errors` | Show all CLI status messages or only errors. |
 | `default_output` | `string` | Base export folder for `course`/`queue`/`gradebook`. |
 | `save_session` | `boolean` | Save the session after the command (if `session_file` is specified). |

@@ -76,15 +76,6 @@ When shutting down, the server closes the HTTP session. You can save the state w
 
 Checking the server status.
 
-**Answer:**
-
-```json
-{
-  "status": "ok",
-  "version": "0.8"
-}
-```
-
 ### Authentication
 
 #### `POST /auth/login`

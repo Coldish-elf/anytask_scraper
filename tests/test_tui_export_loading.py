@@ -120,6 +120,26 @@ def _fake_screen(app: _FakeApp) -> SimpleNamespace:
     return screen
 
 
+def _preview_screen(app: _FakeApp) -> SimpleNamespace:
+    screen = _fake_screen(app)
+    screen._get_included_columns = lambda: []
+    screen._get_current_export_filters = lambda: {}
+    screen._resolve_export_filename = lambda name: name
+    screen._preview_queue = (
+        lambda entries, fmt, course_id, total, included: f"queue:{course_id}:{total}:{fmt}"
+    )
+    screen._preview_submissions = (
+        lambda entries, fmt, course_id, total, included: f"subs:{course_id}:{total}:{fmt}"
+    )
+    screen._preview_gradebook = (
+        lambda groups, fmt, course_id, total, included: f"gradebook:{course_id}:{total}:{fmt}"
+    )
+    screen._has_loaded_export_data = (
+        lambda export_type: main_mod.MainScreen._has_loaded_export_data(screen, export_type)
+    )
+    return screen
+
+
 def test_load_queue_for_export_fetches_when_not_cached(monkeypatch) -> None:
     class Client:
         def fetch_queue_page(self, course_id: int) -> str:
@@ -371,6 +391,39 @@ def test_update_export_filters_db_disables_non_json_formats_and_selects_json() -
     assert csv_radio.disabled is True
     assert files_radio.disabled is True
     assert json_radio.value is True
+
+
+def test_generate_preview_queue_shows_empty_loaded_state() -> None:
+    app = _FakeApp(client=object())
+    app.queue_cache[1250] = ReviewQueue(course_id=1250, entries=[])
+    screen = _preview_screen(app)
+    screen._queue_loaded_for = 1250
+
+    preview = main_mod.MainScreen._generate_preview(screen, "queue-export-radio", "json")
+
+    assert preview == "[dim]No queue entries match current filters[/dim]"
+
+
+def test_generate_preview_submissions_shows_empty_loaded_state() -> None:
+    app = _FakeApp(client=object())
+    app.queue_cache[1250] = ReviewQueue(course_id=1250, entries=[])
+    screen = _preview_screen(app)
+    screen._queue_loaded_for = 1250
+
+    preview = main_mod.MainScreen._generate_preview(screen, "subs-export-radio", "json")
+
+    assert preview == "[dim]No queue entries match current filters[/dim]"
+
+
+def test_generate_preview_gradebook_shows_empty_loaded_state() -> None:
+    app = _FakeApp(client=object())
+    app.gradebook_cache[1250] = Gradebook(course_id=1250, groups=[])
+    screen = _preview_screen(app)
+    screen._gradebook_loaded_for = 1250
+
+    preview = main_mod.MainScreen._generate_preview(screen, "gb-export-radio", "json")
+
+    assert preview == "[dim]No gradebook rows match current filters[/dim]"
 
 
 def test_finish_export_preload_ignores_stale_token() -> None:

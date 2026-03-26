@@ -67,7 +67,7 @@
 Что скачивается:
 
 - вложения из комментариев
-- Colab-ссылки (`colab.research.google.com`) как `*.ipynb`
-- при неуспехе Colab создаётся `colab_{issue_id}.url.txt` с исходной ссылкой.
+- Colab-ссылки (`colab.research.google.com`) как `last_first_task.ipynb`
+- при неуспехе Colab создаётся `last_first_task.url.txt` с исходной ссылкой.
 
 Структура: `<output>/<student_or_issue>/...`.

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.1] - 2026-03-26
+
+### Changed
+
+- Session storage now defaults to ~/.config/anytask-scraper/session.json, with legacy .anytask_session.json still accepted for migration and saved-session login fallback.
+- Google Colab notebook exports now use last-name/first-name/task-based names for .ipynb downloads and .url.txt fallback files instead of the old colab_{issue_id} naming.
+
+### Fixed
+
+- TUI login by username/password did not save a reusable session, so “saved session” login and auto-login stopped working after a fresh manual login.
+- Switching courses in TUI could leave the visible task and queue filters out of sync with the rows currently shown in the tables.
+- Queue and submission write actions used hardcoded status codes instead of the real status options parsed from the submission page.
+- Queue preview could render stale background results after the highlighted row had already changed.
+- Queue preview and cached submission data were not refreshed immediately after successful grade/status/comment writes.
+- Submission form parsing crashed on non-numeric placeholder values in status \<option> entries.
+- Comment timestamps always assumed the current year, which produced incorrect dates around New Year rollovers.
+- JSON DB comment deduplication depended on comment order, so inserting an older comment could duplicate later issue_chain events.
+- Export preview treated empty queue and gradebook datasets as “not loaded” and showed misleading placeholder text.
+- Markdown table exports wrote raw values without escaping | and line breaks, which could corrupt generated tables.
+- db sync --pull, db pull, and /db/pull did not expose the same name_list filtering behavior.
+- API submission responses did not expose issue_url.
+
 ## [1.1.0] - 2026-03-24
 
 ### Added

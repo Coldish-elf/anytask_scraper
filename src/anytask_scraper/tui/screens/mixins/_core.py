@@ -44,10 +44,12 @@ class CoreMixin:
     is_teacher_view: bool
     all_tasks: list[Task]
     filtered_tasks: list[Task]
+    _task_submission_cache: dict[tuple[int | None, str], Submission]
     _task_filter_undo: dict[str, Any] | None
     all_queue_entries: list[QueueEntry]
     filtered_queue_entries: list[QueueEntry]
     _queue_loaded_for: int | None
+    _queue_preview_submission: Submission | None
     _queue_filter_undo: dict[str, Any] | None
     _gradebook_loaded_for: int | None
     all_gradebook_groups: list[GradebookGroup]
@@ -731,16 +733,15 @@ class CoreMixin:
         self.all_tasks = list(course.tasks)
         self.is_teacher_view = any(t.section for t in self.all_tasks)
 
-        self.filtered_tasks = list(self.all_tasks)
         self._update_task_filter_options()
         self._setup_task_table_columns()
-        self._rebuild_task_table()
+        self.query_one("#task-filter-bar", TaskFilterBar).reset()  # type: ignore[attr-defined]
         self._clear_detail()
 
         self._queue_loaded_for = None
         self.all_queue_entries = []
         self.filtered_queue_entries = []
-        self._rebuild_queue_table()
+        self.query_one("#queue-filter-bar", QueueFilterBar).reset()  # type: ignore[attr-defined]
         self._clear_queue_detail()
 
         self._gradebook_loaded_for = None
@@ -848,4 +849,31 @@ class CoreMixin:
             SubmissionScreen,
         )
 
-        self.app.push_screen(SubmissionScreen(sub, teacher_mode=self.is_teacher_view))
+        self.app.push_screen(
+            SubmissionScreen(
+                sub,
+                teacher_mode=self.is_teacher_view,
+                on_submission_refreshed=self._sync_submission_caches,
+            )
+        )
+
+    def _sync_submission_caches(self, sub: Submission) -> None:
+        if self._selected_course_id is None or not sub.issue_url:
+            return
+
+        course_id = self._selected_course_id
+        for key, cached in list(self._task_submission_cache.items()):
+            if key[0] != course_id:
+                continue
+            if key[1] == sub.issue_url or cached.issue_id == sub.issue_id:
+                self._task_submission_cache[key] = sub
+
+        queue = self.app.queue_cache.get(course_id)
+        if queue is not None:
+            queue.submissions[sub.issue_url] = sub
+
+        if (
+            self._queue_preview_submission is not None
+            and self._queue_preview_submission.issue_id == sub.issue_id
+        ):
+            self._queue_preview_submission = sub

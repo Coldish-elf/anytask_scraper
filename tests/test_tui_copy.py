@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from rich.text import Text
 
 from anytask_scraper.models import Comment, FileAttachment, Submission, Task
+from anytask_scraper.tui import app as app_mod
 from anytask_scraper.tui import clipboard as clipboard_mod
 from anytask_scraper.tui.screens import action_menu as action_menu_mod
 from anytask_scraper.tui.screens import main as main_mod
@@ -258,6 +260,45 @@ def test_submission_right_click_opens_action_menu() -> None:
     assert opened == [True]
     assert event.prevented is True
     assert event.stopped is True
+
+
+def test_get_session_candidates_prefers_configured_path_and_keeps_legacy_fallback() -> None:
+    candidates = app_mod.get_session_candidates({"session_file": "state/custom-session.json"})
+
+    assert candidates == [Path("state/custom-session.json"), Path(".anytask_session.json")]
+
+
+def test_submission_teacher_actions_hide_unavailable_actions() -> None:
+    submission = Submission(
+        issue_id=1,
+        task_title="Task A",
+        has_grade_form=True,
+        has_status_form=True,
+        has_comment_form=False,
+        status_options=[(3, "На проверке")],
+    )
+    screen = submission_mod.SubmissionScreen(submission, teacher_mode=True)
+
+    assert screen._teacher_actions() == [("grade", "Set grade"), ("status", "Set status")]
+
+
+def test_submission_teacher_actions_include_accept_rate_when_accept_status_exists() -> None:
+    submission = Submission(
+        issue_id=1,
+        task_title="Task A",
+        has_grade_form=True,
+        has_status_form=True,
+        has_comment_form=True,
+        status_options=[(3, "Review"), (7, "Accepted")],
+    )
+    screen = submission_mod.SubmissionScreen(submission, teacher_mode=True)
+
+    assert screen._teacher_actions() == [
+        ("rate", "Accept & Rate"),
+        ("grade", "Set grade"),
+        ("status", "Set status"),
+        ("comment", "Add comment"),
+    ]
 
 
 def test_action_menu_option_selected_copy() -> None:

@@ -4,12 +4,28 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from anytask_scraper.models import Comment, QueueEntry, ReviewQueue, Submission
+from anytask_scraper.client import AnytaskClient, DownloadResult
+from anytask_scraper.models import (
+    Comment,
+    Course,
+    Gradebook,
+    GradebookEntry,
+    GradebookGroup,
+    QueueEntry,
+    ReviewQueue,
+    Submission,
+    Task,
+)
 from anytask_scraper.storage import (
     clone_submission_repos,
+    download_submission_files,
+    save_course_markdown,
+    save_gradebook_markdown,
     save_queue_csv,
+    save_queue_markdown,
     save_submissions_csv,
     save_submissions_json,
+    save_submissions_markdown,
 )
 
 
@@ -101,6 +117,77 @@ def test_save_submissions_json_applies_columns(tmp_path: Path) -> None:
     assert payload["submissions"][0] == {"issue_id": 7, "task": "Task 1"}
 
 
+def test_markdown_exports_escape_table_cells(tmp_path: Path) -> None:
+    course = Course(
+        course_id=1250,
+        title="Course",
+        tasks=[
+            Task(
+                task_id=1,
+                title="Task | 1\nPart 2",
+                status="Ready",
+            )
+        ],
+    )
+    queue = ReviewQueue(
+        course_id=1250,
+        entries=[
+            QueueEntry(
+                student_name="Alice | Smith",
+                student_url="/u/alice",
+                task_title="Task | 1\nPart 2",
+                update_time="01-01-2026",
+                mark="10",
+                status_color="success",
+                status_name="Done",
+                responsible_name="Bob\nReviewer",
+                responsible_url="/u/bob",
+                has_issue_access=True,
+                issue_url="/issue/1",
+            )
+        ],
+    )
+    submissions = [
+        Submission(
+            issue_id=7,
+            task_title="Task | 1\nPart 2",
+            student_name="Alice | Smith",
+            reviewer_name="Bob\nReviewer",
+            status="Done",
+            grade="10",
+            max_score="10",
+        )
+    ]
+    gradebook = Gradebook(
+        course_id=1250,
+        groups=[
+            GradebookGroup(
+                group_name="Group | A",
+                group_id=1,
+                task_titles=["Task | 1\nPart 2"],
+                entries=[
+                    GradebookEntry(
+                        student_name="Alice | Smith",
+                        student_url="/u/alice",
+                        scores={"Task | 1\nPart 2": 10.0},
+                        total_score=10.0,
+                    )
+                ],
+            )
+        ],
+    )
+
+    course_md = save_course_markdown(course, tmp_path).read_text(encoding="utf-8")
+    queue_md = save_queue_markdown(queue, tmp_path).read_text(encoding="utf-8")
+    subs_md = save_submissions_markdown(submissions, 1250, tmp_path).read_text(encoding="utf-8")
+    gradebook_md = save_gradebook_markdown(gradebook, tmp_path).read_text(encoding="utf-8")
+
+    assert r"Task \| 1<br>Part 2" in course_md
+    assert r"Alice \| Smith" in queue_md
+    assert r"Bob<br>Reviewer" in subs_md
+    assert r"Task \| 1<br>Part 2" in gradebook_md
+
+
 def _make_comment(links: list[str]) -> Comment:
     return Comment(
         author_name="Alice",
@@ -189,6 +276,32 @@ class TestCloneSubmissionRepos:
             clone_submission_repos(submission, tmp_path)
 
         assert (tmp_path / "99").is_dir()
+
+    def test_downloads_colab_notebooks_with_student_and_task_name(self, tmp_path: Path) -> None:
+        colab_url = "https://colab.research.google.com/drive/abc123"
+        submission = _make_submission(
+            issue_id=42,
+            student_name="Ivanov Ivan",
+            comments=[_make_comment([colab_url])],
+        )
+        recorded_paths: list[Path] = []
+
+        with AnytaskClient() as client:
+
+            def fake_download(url: str, output_path: str) -> DownloadResult:
+                assert url == colab_url
+                path = Path(output_path)
+                recorded_paths.append(path)
+                path.write_text("{}", encoding="utf-8")
+                return DownloadResult(success=True, path=output_path, reason="ok")
+
+            client.download_colab_notebook = fake_download  # type: ignore[method-assign]
+            result = download_submission_files(client, submission, tmp_path)
+
+        expected = tmp_path / "Ivanov_Ivan" / "Ivanov_Ivan_Task_1.ipynb"
+        assert recorded_paths == [expected]
+        assert result == {colab_url: expected}
+        assert expected.read_text(encoding="utf-8") == "{}"
 
     def test_clone_failure_logged(self, tmp_path: Path) -> None:
         from anytask_scraper.github_clone import CloneResult, GitHubRepoInfo

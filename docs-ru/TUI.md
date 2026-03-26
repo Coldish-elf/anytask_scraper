@@ -13,7 +13,7 @@ anytask-scraper tui
 Поддерживаются два варианта:
 
 1. Вход по `username/password`.
-2. Вход по сохранённой сессии (`.anytask_session.json`), если файл существует.
+2. Вход по сохранённой сессии (`~/.config/anytask-scraper/session.json`), если файл существует. Старый файл `.anytask_session.json` по-прежнему проверяется как fallback при миграции.
 
 Если в настройках `auto_login_session=true` и файл сессии найден, приложение входит автоматически.
 
@@ -153,4 +153,5 @@ anytask-scraper tui
 ## Где TUI хранит данные
 
 - Настройки: `.anytask_scraper_settings.json` в текущей директории
-- Сессионный файл по умолчанию: `.anytask_session.json`
+- Сессионный файл по умолчанию: `~/.config/anytask-scraper/session.json`
+- Старый fallback-файл сессии: `.anytask_session.json`

@@ -57,6 +57,7 @@ class ExportMixin:
     _export_filter_prompts: dict[str, str]
     _export_name_list: list[str]
     _queue_loaded_for: int | None
+    _gradebook_loaded_for: int | None
 
     focused: Any
 
@@ -427,14 +428,17 @@ class ExportMixin:
                 continue
 
     def _has_loaded_export_data(self, export_type: str) -> bool:
+        course_id = self._selected_course_id
+        if course_id is None:
+            return False
         if export_type == "tasks-export-radio":
             return True
         if export_type in ("queue-export-radio", "subs-export-radio"):
-            return bool(self.all_queue_entries)
+            return self._queue_loaded_for == course_id or course_id in self.app.queue_cache
         if export_type == "gb-export-radio":
-            return bool(self.all_gradebook_groups)
+            return self._gradebook_loaded_for == course_id or course_id in self.app.gradebook_cache
         if export_type == "db-export-radio":
-            return bool(self.all_queue_entries)
+            return self._queue_loaded_for == course_id or course_id in self.app.queue_cache
         return True
 
     def _get_current_export_filters(self) -> dict[str, ExportFilterValue]:
@@ -752,6 +756,8 @@ class ExportMixin:
                     e for e in q_entries if name_matches_list(e.student_name, name_list_filter)
                 ]
             if not q_entries:
+                if self._has_loaded_export_data(export_type):
+                    return "[dim]No queue entries match current filters[/dim]"
                 return "[dim]Queue data will be loaded during export[/dim]"
             return self._preview_queue(
                 q_entries[:max_items], format_type, course_id, len(q_entries), included
@@ -791,6 +797,8 @@ class ExportMixin:
                 groups = [g for g in groups if g.entries]
             total = sum(len(g.entries) for g in groups)
             if not total:
+                if self._has_loaded_export_data(export_type):
+                    return "[dim]No gradebook rows match current filters[/dim]"
                 return "[dim]Gradebook data will be loaded during export[/dim]"
             return self._preview_gradebook(groups, format_type, course_id, total, included)
 
@@ -822,6 +830,8 @@ class ExportMixin:
                     e for e in sub_entries if name_matches_list(e.student_name, name_list_filter)
                 ]
             if not sub_entries:
+                if self._has_loaded_export_data(export_type):
+                    return "[dim]No queue entries match current filters[/dim]"
                 return "[dim]Queue data will be loaded during export[/dim]"
             return self._preview_submissions(
                 sub_entries[:max_items], format_type, course_id, len(sub_entries), included

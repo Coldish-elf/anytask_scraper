@@ -12,7 +12,7 @@ anytask-scraper tui
 Two options are supported:
 
 1. Login using `username/password`.
-2. Login using the saved session (`.anytask_session.json`), if the file exists.
+2. Login using the saved session (`~/.config/anytask-scraper/session.json`), if the file exists. The legacy `.anytask_session.json` file is still checked as a fallback during migration.
 
 If the settings are `auto_login_session=true` and the session file is found, the application logs in automatically.
 
@@ -152,4 +152,5 @@ Copying works using platform backends:
 ## Where TUI stores data
 
 - Settings: `.anytask_scraper_settings.json` in the current directory
-- Default session file: `.anytask_session.json`
+- Default session file: `~/.config/anytask-scraper/session.json`
+- Legacy session fallback: `.anytask_session.json`

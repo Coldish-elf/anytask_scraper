@@ -1165,6 +1165,7 @@ def _run_db_sync_once(args: argparse.Namespace, client: AnytaskClient) -> None:
             last_name_from=args.pull_last_name_from,
             last_name_to=args.pull_last_name_to,
             issue_id=args.issue_id,
+            name_list=name_list or None,
         )
         console.print(f"[green][OK][/green] Pulled {len(pulled)} new entries")
         _print_pulled_entries(pulled, args.format)

@@ -22,6 +22,20 @@ _OLD_SESSION_FILE = ".anytask_session.json"
 _DOUBLE_PRESS_MS = 500
 
 
+def get_session_candidates(settings: dict[str, object] | None = None) -> list[Path]:
+    session_value = SESSION_FILE
+    if settings is not None:
+        configured = settings.get("session_file")
+        if isinstance(configured, str) and configured.strip():
+            session_value = configured
+
+    candidates = [Path(session_value)]
+    legacy = Path(_OLD_SESSION_FILE)
+    if legacy not in candidates:
+        candidates.append(legacy)
+    return candidates
+
+
 class AnytaskApp(App[None]):
     TITLE = "Anytask Scraper"
     CSS_PATH = "app.tcss"
@@ -45,12 +59,9 @@ class AnytaskApp(App[None]):
     def on_mount(self) -> None:
         settings = self._load_settings()
         if settings.get("auto_login_session", False):
-            session_path = settings.get("session_file", SESSION_FILE)
-            if isinstance(session_path, str):
-                session = Path(session_path)
-                old_session = Path(_OLD_SESSION_FILE)
-                if session.exists() or old_session.exists():
-                    self._auto_login(str(session))
+            for candidate in get_session_candidates(settings):
+                if candidate.exists():
+                    self._auto_login(str(candidate))
                     return
         from anytask_scraper.tui.screens.login import LoginScreen
 
@@ -114,20 +125,17 @@ class AnytaskApp(App[None]):
     def _auto_login(self, session_path: str) -> None:
         logger.info("Attempting auto-login from %s", session_path)
         try:
-            from anytask_scraper.client import AnytaskClient
-
+            settings = self._load_settings()
+            target_path = get_session_candidates(settings)[0]
             client = AnytaskClient()
+
             success = client.load_session(session_path)
-
-            if not success and Path(_OLD_SESSION_FILE).exists():
-                success = client.load_session(_OLD_SESSION_FILE)
-                if success:
-                    logger.info("Migrating session from %s to %s", _OLD_SESSION_FILE, session_path)
-                    client.save_session(session_path)
-
             if success:
+                if Path(session_path) != target_path:
+                    logger.info("Migrating session from %s to %s", session_path, target_path)
+                    client.save_session(target_path)
                 self.client = client
-                self.session_path = session_path
+                self.session_path = str(target_path)
                 logger.info("Auto-login successful")
 
                 def _push_main() -> None:
