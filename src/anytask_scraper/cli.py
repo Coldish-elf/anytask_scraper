@@ -233,6 +233,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Clone GitHub repos from submission links (implies --deep)",
     )
+    queue_p.add_argument(
+        "--flat",
+        action="store_true",
+        default=False,
+        help=(
+            "Save all files directly in the output directory without student subfolders. "
+            "Files are still named LastName_FirstName_TaskName.ext."
+        ),
+    )
     queue_p.add_argument("--filter-task", help="Filter by task title (substring match)")
     queue_p.add_argument("--filter-reviewer", help="Filter by reviewer name (substring match)")
     queue_p.add_argument("--filter-status", help="Filter by status name (substring match)")
@@ -1054,7 +1063,7 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
         total = 0
         with console.status("[bold blue]Downloading files..."):
             for sub in queue.submissions.values():
-                downloaded = download_submission_files(client, sub, output_dir)
+                downloaded = download_submission_files(client, sub, output_dir, flat=args.flat)
                 total += len(downloaded)
         _print_ok(args, f"Downloaded {total} files -> {output_dir}")
 
@@ -1064,7 +1073,7 @@ def _run_queue(args: argparse.Namespace, client: AnytaskClient) -> None:
         total_repos = 0
         with console.status("[bold blue]Cloning repos..."):
             for sub in queue.submissions.values():
-                cloned = clone_submission_repos(sub, output_dir)
+                cloned = clone_submission_repos(sub, output_dir, flat=args.flat)
                 total_repos += len(cloned)
         if total_repos:
             _print_ok(args, f"Cloned {total_repos} repo(s) -> {output_dir}")

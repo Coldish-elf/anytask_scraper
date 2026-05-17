@@ -43,21 +43,26 @@ def _resolve_output_path(
     return output / safe_name
 
 
-def _format_colab_notebook_stem(submission: Submission) -> str:
-    student_part = (
+def _make_submission_filename(submission: Submission, original_ext: str, used: set[str]) -> str:
+    student = (
         format_student_folder(submission.student_name)
         if submission.student_name
         else str(submission.issue_id)
     )
-    if student_part == "unknown":
-        student_part = str(submission.issue_id)
-
-    task_name = submission.task_title.strip()
-    task_part = format_student_folder(task_name) if task_name else f"task_{submission.issue_id}"
-    if task_part == "unknown":
-        task_part = f"task_{submission.issue_id}"
-
-    return f"{student_part}_{task_part}"
+    if student == "unknown":
+        student = str(submission.issue_id)
+    task_raw = submission.task_title.strip()
+    task = format_student_folder(task_raw) if task_raw else f"task_{submission.issue_id}"
+    if task == "unknown":
+        task = f"task_{submission.issue_id}"
+    stem = f"{student}_{task}"
+    candidate = f"{stem}{original_ext}"
+    idx = 1
+    while candidate in used:
+        idx += 1
+        candidate = f"{stem}_{idx}{original_ext}"
+    used.add(candidate)
+    return candidate
 
 
 def save_course_json(
@@ -566,29 +571,34 @@ def download_submission_files(
     client: object,
     submission: Submission,
     base_dir: Path | str,
+    *,
+    flat: bool = False,
 ) -> dict[str, Path]:
     from anytask_scraper.client import AnytaskClient
 
     assert isinstance(client, AnytaskClient)
     base_dir = Path(base_dir)
-    folder_name = (
-        format_student_folder(submission.student_name)
-        if submission.student_name
-        else str(submission.issue_id)
-    )
-    student_dir = base_dir / folder_name
-    student_dir.mkdir(parents=True, exist_ok=True)
+
+    if flat:
+        target_dir = base_dir
+    else:
+        folder_name = (
+            format_student_folder(submission.student_name)
+            if submission.student_name
+            else str(submission.issue_id)
+        )
+        target_dir = base_dir / folder_name
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     downloaded: dict[str, Path] = {}
-    logger.debug("Downloading files for submission %d to %s", submission.issue_id, student_dir)
+    used_names: set[str] = set()
+    logger.debug("Downloading files for submission %d to %s", submission.issue_id, target_dir)
 
-    colab_stem = _format_colab_notebook_stem(submission)
     for comment in submission.comments:
         for file_att in comment.files:
-            safe_name = Path(file_att.filename).name
-            if not safe_name:
-                safe_name = f"file_{submission.issue_id}"
-            dest = student_dir / safe_name
+            ext = Path(file_att.filename).suffix
+            dest_name = _make_submission_filename(submission, ext, used_names)
+            dest = target_dir / dest_name
             result = client.download_file(file_att.download_url, str(dest))
             if result.success:
                 downloaded[file_att.filename] = dest
@@ -598,13 +608,13 @@ def download_submission_files(
         for link in comment.links:
             if "colab.research.google.com" not in link:
                 continue
-            nb_name = f"{colab_stem}.ipynb"
-            dest = student_dir / nb_name
+            dest_name = _make_submission_filename(submission, ".ipynb", used_names)
+            dest = target_dir / dest_name
             result = client.download_colab_notebook(link, str(dest))
             if result.success:
                 downloaded[link] = dest
             else:
-                url_file = student_dir / f"{colab_stem}.url.txt"
+                url_file = target_dir / f"{Path(dest_name).stem}.url.txt"
                 url_file.write_text(link)
                 downloaded[link] = url_file
 
@@ -615,24 +625,30 @@ def clone_submission_repos(
     submission: Submission,
     base_dir: Path | str,
     timeout: int = 120,
+    *,
+    flat: bool = False,
 ) -> dict[str, Path]:
     from anytask_scraper.github_clone import clone_github_repo, extract_github_links
 
     base_dir = Path(base_dir)
-    folder_name = (
-        format_student_folder(submission.student_name)
-        if submission.student_name
-        else str(submission.issue_id)
-    )
-    student_dir = base_dir / folder_name
-    student_dir.mkdir(parents=True, exist_ok=True)
+
+    if flat:
+        target_dir = base_dir
+    else:
+        folder_name = (
+            format_student_folder(submission.student_name)
+            if submission.student_name
+            else str(submission.issue_id)
+        )
+        target_dir = base_dir / folder_name
+    target_dir.mkdir(parents=True, exist_ok=True)
 
     all_links = [link for comment in submission.comments for link in comment.links]
     repos = extract_github_links(all_links)
     cloned: dict[str, Path] = {}
 
     for info in repos:
-        result = clone_github_repo(info, student_dir, timeout=timeout)
+        result = clone_github_repo(info, target_dir, timeout=timeout)
         if result.success:
             cloned[info.url] = result.path
         else:

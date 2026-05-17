@@ -352,6 +352,133 @@ Upload submission details by issue ID.
 }
 ```
 
+#### `GET /submissions/{issue_id}/files/{filename}`
+
+Download a file attached to a submission. Returns the file as an octet-stream (or matching MIME type).
+
+**Path parameters:**
+
+- `issue_id` (int) - issue ID
+- `filename` (str) - exact filename as returned in the submission's `comments[].files[].filename` field
+
+**Query parameters:**
+
+- `student_task_name` (bool, default=false) - when true, the downloaded filename uses `LastName_FirstName_TaskName.ext` format in the Content-Disposition header instead of the original filename
+
+**Response (200):** file bytes with `Content-Disposition: attachment; filename=<filename>`
+
+**Errors:**
+
+- `404` - file not found in submission
+- `502` - failed to download file from anytask.org
+
+#### `GET /submissions/{issue_id}/download`
+
+Download all files from a submission as a ZIP archive. Files are named `LastName_FirstName_TaskName.ext`.
+
+**Path parameters:**
+
+- `issue_id` (int) - issue ID
+
+**Query parameters:**
+
+- `flat` (bool, default=false) - when false, files are placed inside a `LastName_FirstName/` subfolder within the ZIP; when true, all files are in the ZIP root
+
+**Response (200):** ZIP file with `Content-Disposition: attachment; filename="submission_{issue_id}.zip"`
+
+**Errors:**
+
+- `401` - not authenticated
+- `502` - failed to download one or more files from anytask.org
+
+#### `POST /submissions/{issue_id}/grade`
+
+Set the grade for a submission.
+
+**Path parameters:**
+
+- `issue_id` (int) - issue ID
+
+**Request body:**
+
+```json
+{
+  "grade": 9.5,
+  "comment": "Good work!"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "action": "grade",
+  "issue_id": 421525,
+  "value": "9.5",
+  "message": ""
+}
+```
+
+#### `POST /submissions/{issue_id}/status`
+
+Set the review status for a submission.
+
+**Path parameters:**
+
+- `issue_id` (int) - issue ID
+
+**Request body:**
+
+```json
+{
+  "status": "accepted",
+  "comment": ""
+}
+```
+
+Allowed status values: `review`, `rework`, `accepted`.
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "action": "status",
+  "issue_id": 421525,
+  "value": "accepted",
+  "message": ""
+}
+```
+
+#### `POST /submissions/{issue_id}/comment`
+
+Post a comment to a submission.
+
+**Path parameters:**
+
+- `issue_id` (int) - issue ID
+
+**Request body:**
+
+```json
+{
+  "comment": "Please fix the edge case in task 3."
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "action": "comment",
+  "issue_id": 421525,
+  "value": "Please fix the edge case in task 3.",
+  "message": ""
+}
+```
+
 ### JSON Database
 
 #### `POST /db/sync`
@@ -528,6 +655,37 @@ Add a write event to issue_chain (for example grading/status update).
 }
 ```
 
+#### `GET /db/diff`
+
+Get entries that have pending write events (grading/status changes recorded via `/db/write` but not yet applied).
+
+**Query parameters:**
+
+- `db_file` (string, default=`./queue_db.json`) - path to the DB file
+- `course_id` (int, optional) - filter by course
+
+**Response (200):** array of DB entry objects (same shape as `/db/entries`)
+
+#### `GET /db/stats`
+
+Get statistics for the DB.
+
+**Query parameters:**
+
+- `db_file` (string, default=`./queue_db.json`) - path to the DB file
+- `course_id` (int, optional) - filter by course
+
+**Response (200):**
+
+```json
+{
+  "total": 42,
+  "new": 10,
+  "pulled": 20,
+  "processed": 12
+}
+```
+
 ## HTTP status codes
 
 | Code | Meaning |
@@ -563,6 +721,12 @@ curl -X POST http://localhost:8000/db/sync \
     "pull": true,
     "limit": 10
   }'
+
+# Download all submission files as ZIP (flat structure)
+curl "http://localhost:8000/submissions/421525/download?flat=true" -o submission.zip
+
+# Download single file with student+task naming
+curl "http://localhost:8000/submissions/421525/files/hw.ipynb?student_task_name=true" -o Ivanov_Ivan_Task1.ipynb
 ```
 
 ### Python (requests)

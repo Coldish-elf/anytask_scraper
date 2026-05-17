@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import dataclasses
+import io
 import logging
+import mimetypes
 import os
+import shutil
+import tempfile
+import zipfile as _zipfile
 from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.background import BackgroundTasks
+from fastapi.responses import FileResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from anytask_scraper._queue_helpers import filter_queue_entries, parse_ajax_entry
@@ -559,6 +566,114 @@ def _register_routes(app: FastAPI) -> None:
             return state.with_client(_write)
         except WriteError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _handle_error(exc) from exc
+
+    @app.get("/submissions/{issue_id}/files/{filename}", tags=["submissions"])
+    def route_download_submission_file(
+        issue_id: int,
+        filename: str,
+        background_tasks: BackgroundTasks,
+        request: Request,
+        student_task_name: bool = Query(
+            False, description="Use LastName_FirstName_TaskName.ext as the download filename"
+        ),
+    ) -> FileResponse:
+        state: AppState = request.app.state.anytask
+        try:
+
+            def _fetch(client: Any) -> FileResponse:
+                url = f"https://anytask.org/issue/{issue_id}"
+                html = client.fetch_submission_page(url)
+                sub = parse_submission_page(html, issue_id, issue_url=url)
+                attachment = None
+                for comment in sub.comments:
+                    for f in comment.files:
+                        if f.filename == filename:
+                            attachment = f
+                            break
+                    if attachment:
+                        break
+                if attachment is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"File '{filename}' not found in submission {issue_id}",
+                    )
+                suffix = Path(filename).suffix or ""
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    pass
+
+                tmp.close()
+                result = client.download_file(attachment.download_url, tmp.name)
+                if not result.success:
+                    os.unlink(tmp.name)
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Failed to download file: {result.reason}",
+                    )
+                if student_task_name:
+                    from anytask_scraper.storage import _make_submission_filename
+
+                    ext = Path(filename).suffix
+                    response_filename = _make_submission_filename(sub, ext, set())
+                else:
+                    response_filename = filename
+                media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+                background_tasks.add_task(os.unlink, tmp.name)
+                return FileResponse(
+                    path=tmp.name,
+                    filename=response_filename,
+                    media_type=media_type,
+                    background=background_tasks,
+                )
+
+            return state.with_client(_fetch)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise _handle_error(exc) from exc
+
+    @app.get("/submissions/{issue_id}/download", tags=["submissions"])
+    def route_download_submission_zip(
+        issue_id: int,
+        request: Request,
+        flat: bool = Query(
+            False, description="Put all files in zip root instead of a student subfolder"
+        ),
+    ) -> Response:
+        from anytask_scraper.storage import download_submission_files as _dl_files
+
+        state: AppState = request.app.state.anytask
+        try:
+
+            def _fetch(client: Any) -> Response:
+                url = f"https://anytask.org/issue/{issue_id}"
+                html = client.fetch_submission_page(url)
+                sub = parse_submission_page(html, issue_id, issue_url=url)
+
+                tmp_dir = Path(tempfile.mkdtemp())
+                try:
+                    _dl_files(client, sub, tmp_dir, flat=flat)
+                    buf = io.BytesIO()
+                    with _zipfile.ZipFile(buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+                        for p in tmp_dir.rglob("*"):
+                            if p.is_file():
+                                zf.write(p, p.relative_to(tmp_dir))
+                    buf.seek(0)
+                    data = buf.read()
+                finally:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+                zip_name = f"submission_{issue_id}.zip"
+                return Response(
+                    content=data,
+                    media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+                )
+
+            return state.with_client(_fetch)
         except HTTPException:
             raise
         except Exception as exc:

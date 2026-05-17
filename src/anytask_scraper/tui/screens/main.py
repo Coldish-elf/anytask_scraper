@@ -345,6 +345,18 @@ class MainScreen(ExportMixin, GradebookMixin, QueueMixin, TasksMixin, CoreMixin,
                                     id="export-clone-repos-on-radio",
                                 )
                         with Container(classes="export-section"):
+                            yield Label("Folder Structure", classes="export-section-title")
+                            with RadioSet(id="export-structure-set"):
+                                yield RadioButton(
+                                    "Folders",
+                                    value=True,
+                                    id="export-structure-folders-radio",
+                                )
+                                yield RadioButton(
+                                    "Flat",
+                                    id="export-structure-flat-radio",
+                                )
+                        with Container(classes="export-section"):
                             yield Label("Output Directory", classes="export-section-title")
                             yield Input(value="./output", id="output-dir-input")
                         with Container(classes="export-section"):

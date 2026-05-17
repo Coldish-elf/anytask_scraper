@@ -188,6 +188,187 @@ def test_markdown_exports_escape_table_cells(tmp_path: Path) -> None:
     assert r"Task \| 1<br>Part 2" in gradebook_md
 
 
+class TestMakeSubmissionFilename:
+    def _sub(self, student: str = "Ivanov Ivan", task: str = "Pandas HW") -> Submission:
+        return Submission(issue_id=42, task_title=task, student_name=student)
+
+    def test_basic_naming(self) -> None:
+        from anytask_scraper.storage import _make_submission_filename
+
+        used: set[str] = set()
+        result = _make_submission_filename(self._sub(), ".ipynb", used)
+        assert result == "Ivanov_Ivan_Pandas_HW.ipynb"
+
+    def test_populates_used_set(self) -> None:
+        from anytask_scraper.storage import _make_submission_filename
+
+        used: set[str] = set()
+        _make_submission_filename(self._sub(), ".ipynb", used)
+        assert "Ivanov_Ivan_Pandas_HW.ipynb" in used
+
+    def test_conflict_increments_index(self) -> None:
+        from anytask_scraper.storage import _make_submission_filename
+
+        used: set[str] = {"Ivanov_Ivan_Pandas_HW.py"}
+        result = _make_submission_filename(self._sub(), ".py", used)
+        assert result == "Ivanov_Ivan_Pandas_HW_2.py"
+
+    def test_no_conflict_across_extensions(self) -> None:
+        from anytask_scraper.storage import _make_submission_filename
+
+        used: set[str] = {"Ivanov_Ivan_Pandas_HW.ipynb"}
+        result = _make_submission_filename(self._sub(), ".csv", used)
+        assert result == "Ivanov_Ivan_Pandas_HW.csv"
+
+    def test_fallback_when_no_student_name(self) -> None:
+        from anytask_scraper.storage import _make_submission_filename
+
+        sub = Submission(issue_id=99, task_title="Task", student_name="")
+        used: set[str] = set()
+        result = _make_submission_filename(sub, ".py", used)
+        assert result == "99_Task.py"
+
+    def test_fallback_when_no_task_title(self) -> None:
+        from anytask_scraper.storage import _make_submission_filename
+
+        sub = Submission(issue_id=99, task_title="", student_name="Petrov Petr")
+        used: set[str] = set()
+        result = _make_submission_filename(sub, ".py", used)
+        assert result == "Petrov_Petr_task_99.py"
+
+
+class TestDownloadSubmissionFilesNaming:
+    def _make_file_submission(
+        self, student: str = "Ivanov Ivan", task: str = "Task 1"
+    ) -> Submission:
+        from anytask_scraper.models import FileAttachment
+
+        fa = FileAttachment(filename="solution.py", download_url="/dl/sol.py")
+        comment = Comment(
+            author_name="", author_url="", timestamp=None, content_html="", files=[fa]
+        )
+        return Submission(issue_id=1, task_title=task, student_name=student, comments=[comment])
+
+    def test_regular_file_uses_student_task_name(self, tmp_path: Path) -> None:
+        from anytask_scraper.storage import download_submission_files
+
+        sub = self._make_file_submission()
+        with AnytaskClient() as client:
+
+            def fake_dl(url: str, output_path: str) -> DownloadResult:
+                Path(output_path).write_text("x")
+                return DownloadResult(success=True, path=output_path, reason="ok")
+
+            client.download_file = fake_dl  # type: ignore[method-assign]
+            result = download_submission_files(client, sub, tmp_path)
+        names = [p.name for p in result.values()]
+        assert names == ["Ivanov_Ivan_Task_1.py"]
+
+    def test_flat_mode_no_subfolder(self, tmp_path: Path) -> None:
+        from anytask_scraper.storage import download_submission_files
+
+        sub = self._make_file_submission()
+        with AnytaskClient() as client:
+
+            def fake_dl(url: str, output_path: str) -> DownloadResult:
+                Path(output_path).write_text("x")
+                return DownloadResult(success=True, path=output_path, reason="ok")
+
+            client.download_file = fake_dl  # type: ignore[method-assign]
+            result = download_submission_files(client, sub, tmp_path, flat=True)
+        for path in result.values():
+            assert path.parent == tmp_path
+
+    def test_folder_mode_creates_student_subfolder(self, tmp_path: Path) -> None:
+        from anytask_scraper.storage import download_submission_files
+
+        sub = self._make_file_submission()
+        with AnytaskClient() as client:
+
+            def fake_dl(url: str, output_path: str) -> DownloadResult:
+                Path(output_path).write_text("x")
+                return DownloadResult(success=True, path=output_path, reason="ok")
+
+            client.download_file = fake_dl  # type: ignore[method-assign]
+            result = download_submission_files(client, sub, tmp_path, flat=False)
+        for path in result.values():
+            assert path.parent.name == "Ivanov_Ivan"
+
+    def test_conflict_resolution_multiple_same_ext(self, tmp_path: Path) -> None:
+        from anytask_scraper.models import FileAttachment
+        from anytask_scraper.storage import download_submission_files
+
+        fa1 = FileAttachment(filename="a.py", download_url="/dl/a")
+        fa2 = FileAttachment(filename="b.py", download_url="/dl/b")
+        comment = Comment(
+            author_name="", author_url="", timestamp=None, content_html="", files=[fa1, fa2]
+        )
+        sub = Submission(
+            issue_id=1, task_title="Task 1", student_name="Ivanov Ivan", comments=[comment]
+        )
+        with AnytaskClient() as client:
+
+            def fake_dl(url: str, output_path: str) -> DownloadResult:
+                Path(output_path).write_text("x")
+                return DownloadResult(success=True, path=output_path, reason="ok")
+
+            client.download_file = fake_dl  # type: ignore[method-assign]
+            result = download_submission_files(client, sub, tmp_path)
+        names = {p.name for p in result.values()}
+        assert "Ivanov_Ivan_Task_1.py" in names
+        assert "Ivanov_Ivan_Task_1_2.py" in names
+
+
+class TestCloneSubmissionReposFlat:
+    def test_flat_mode_clones_directly_into_base_dir(self, tmp_path: Path) -> None:
+        from anytask_scraper.github_clone import CloneResult, GitHubRepoInfo
+
+        github_url = "https://github.com/user/myrepo"
+        comment = Comment(
+            author_name="", author_url="", timestamp=None, content_html="", links=[github_url]
+        )
+        sub = Submission(
+            issue_id=1, task_title="Task", student_name="Ivanov Ivan", comments=[comment]
+        )
+
+        fake_info = GitHubRepoInfo(owner="user", repo="myrepo", url=github_url)
+        fake_result = CloneResult(success=True, path=tmp_path / "myrepo")
+
+        with (
+            patch("anytask_scraper.github_clone.extract_github_links", return_value=[fake_info]),
+            patch(
+                "anytask_scraper.github_clone.clone_github_repo", return_value=fake_result
+            ) as mock_clone,
+        ):
+            clone_submission_repos(sub, tmp_path, flat=True)
+
+        mock_clone.assert_called_once_with(fake_info, tmp_path, timeout=120)
+
+    def test_default_mode_uses_student_subfolder(self, tmp_path: Path) -> None:
+        from anytask_scraper.github_clone import CloneResult, GitHubRepoInfo
+
+        github_url = "https://github.com/user/myrepo"
+        comment = Comment(
+            author_name="", author_url="", timestamp=None, content_html="", links=[github_url]
+        )
+        sub = Submission(
+            issue_id=1, task_title="Task", student_name="Ivanov Ivan", comments=[comment]
+        )
+
+        fake_info = GitHubRepoInfo(owner="user", repo="myrepo", url=github_url)
+        fake_result = CloneResult(success=True, path=tmp_path / "Ivanov_Ivan" / "myrepo")
+
+        with (
+            patch("anytask_scraper.github_clone.extract_github_links", return_value=[fake_info]),
+            patch(
+                "anytask_scraper.github_clone.clone_github_repo", return_value=fake_result
+            ) as mock_clone,
+        ):
+            clone_submission_repos(sub, tmp_path)
+
+        mock_clone.assert_called_once_with(fake_info, tmp_path / "Ivanov_Ivan", timeout=120)
+
+
 def _make_comment(links: list[str]) -> Comment:
     return Comment(
         author_name="Alice",

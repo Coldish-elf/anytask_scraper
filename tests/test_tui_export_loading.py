@@ -533,6 +533,7 @@ def test_handle_export_passes_columns_and_filename() -> None:
         _get_custom_export_filename=lambda: "my_queue",
         _get_include_submission_files=lambda: False,
         _get_clone_repos=lambda: False,
+        _get_flat_mode=lambda: False,
         _set_export_status=lambda _msg, _kind="info": None,
         _do_export=lambda *args: captured.append(args),
     )
@@ -549,6 +550,7 @@ def test_handle_export_passes_columns_and_filename() -> None:
         filename,
         include_files,
         clone_repos,
+        flat,
     ) = captured[0]
     assert fmt == "csv"
     assert export_type == "subs-export-radio"
@@ -557,6 +559,7 @@ def test_handle_export_passes_columns_and_filename() -> None:
     assert filename == "my_queue"
     assert include_files is False
     assert clone_repos is False
+    assert flat is False
     assert str(output_path).endswith("/output")
 
 

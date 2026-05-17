@@ -74,6 +74,7 @@ class ExportMixin:
         "#param-option-list",
         "#export-include-files-set",
         "#export-clone-repos-set",
+        "#export-structure-set",
         "#output-dir-input",
         "#export-filename-input",
         "#export-btn",
@@ -267,6 +268,8 @@ class ExportMixin:
             self.query_one("#export-include-files-set", RadioSet).disabled = subs_only  # type: ignore[attr-defined]
         with suppress(Exception):
             self.query_one("#export-clone-repos-set", RadioSet).disabled = subs_only  # type: ignore[attr-defined]
+        with suppress(Exception):
+            self.query_one("#export-structure-set", RadioSet).disabled = subs_only  # type: ignore[attr-defined]
 
         is_tasks = export_type == "tasks-export-radio"
         with suppress(Exception):
@@ -565,6 +568,14 @@ class ExportMixin:
             repos_set = self.query_one("#export-clone-repos-set", RadioSet)  # type: ignore[attr-defined]
             btn = repos_set.pressed_button
             return bool(btn and btn.id == "export-clone-repos-on-radio")
+        except Exception:
+            return False
+
+    def _get_flat_mode(self) -> bool:
+        try:
+            structure_set = self.query_one("#export-structure-set", RadioSet)  # type: ignore[attr-defined]
+            btn = structure_set.pressed_button
+            return bool(btn and btn.id == "export-structure-flat-radio")
         except Exception:
             return False
 
@@ -1333,6 +1344,7 @@ class ExportMixin:
         filename = self._get_custom_export_filename()
         include_files = self._get_include_submission_files() or fmt == "files"
         clone_repos = self._get_clone_repos()
+        flat_mode = self._get_flat_mode()
         if export_type == "db-export-radio" and fmt != "json":
             self._set_export_status("DB export supports JSON format only", "error")
             return
@@ -1346,6 +1358,7 @@ class ExportMixin:
             filename,
             include_files,
             clone_repos,
+            flat_mode,
         )
 
     def _set_export_status(self, message: str, kind: str = "info") -> None:
@@ -1365,6 +1378,7 @@ class ExportMixin:
         filename: str | None = None,
         include_files: bool = False,
         clone_repos: bool = False,
+        flat: bool = False,
     ) -> None:
         import sys
 
@@ -1621,7 +1635,7 @@ class ExportMixin:
                         "info",
                     )
                     for sub in subs:
-                        downloaded = download_submission_files(client, sub, output_path)
+                        downloaded = download_submission_files(client, sub, output_path, flat=flat)
                         total_files += len(downloaded)
 
                 if clone_repos:
@@ -1633,7 +1647,7 @@ class ExportMixin:
                         "info",
                     )
                     for sub in subs:
-                        cloned = clone_submission_repos(sub, output_path)
+                        cloned = clone_submission_repos(sub, output_path, flat=flat)
                         total_repos += len(cloned)
 
                 if fmt == "files":

@@ -352,6 +352,133 @@ anytask-scraper serve --session-file ~/.anytask_session.json
 }
 ```
 
+#### `GET /submissions/{issue_id}/files/{filename}`
+
+Скачать файл из submission. Возвращает байты файла (octet-stream или подходящий MIME-тип).
+
+**Path параметры:**
+
+- `issue_id` (int) - ID issue
+- `filename` (str) - точное имя файла из поля `comments[].files[].filename` в submission
+
+**Query-параметры:**
+
+- `student_task_name` (bool, default=false) - если true, имя файла в заголовке Content-Disposition принимает формат `LastName_FirstName_TaskName.ext` вместо оригинального имени
+
+**Ответ (200):** байты файла с заголовком `Content-Disposition: attachment; filename=<filename>`
+
+**Ошибки:**
+
+- `404` - файл не найден в submission
+- `502` - не удалось скачать файл с anytask.org
+
+#### `GET /submissions/{issue_id}/download`
+
+Скачать все файлы из submission в виде ZIP-архива. Файлы именуются в формате `LastName_FirstName_TaskName.ext`.
+
+**Path-параметры:**
+
+- `issue_id` (int) - ID issue
+
+**Query-параметры:**
+
+- `flat` (bool, default=false) - если false, файлы помещаются в подпапку `LastName_FirstName/` внутри ZIP; если true, все файлы находятся в корне ZIP
+
+**Ответ (200):** ZIP-файл с заголовком `Content-Disposition: attachment; filename="submission_{issue_id}.zip"`
+
+**Ошибки:**
+
+- `401` - требуется аутентификация
+- `502` - не удалось скачать один или несколько файлов с anytask.org
+
+#### `POST /submissions/{issue_id}/grade`
+
+Выставить оценку за submission.
+
+**Path параметры:**
+
+- `issue_id` (int) - ID issue
+
+**Тело запроса:**
+
+```json
+{
+  "grade": 9.5,
+  "comment": "Good work!"
+}
+```
+
+**Ответ (200):**
+
+```json
+{
+  "success": true,
+  "action": "grade",
+  "issue_id": 421525,
+  "value": "9.5",
+  "message": ""
+}
+```
+
+#### `POST /submissions/{issue_id}/status`
+
+Изменить статус проверки submission.
+
+**Path параметры:**
+
+- `issue_id` (int) - ID issue
+
+**Тело запроса:**
+
+```json
+{
+  "status": "accepted",
+  "comment": ""
+}
+```
+
+Допустимые значения статуса: `review`, `rework`, `accepted`.
+
+**Ответ (200):**
+
+```json
+{
+  "success": true,
+  "action": "status",
+  "issue_id": 421525,
+  "value": "accepted",
+  "message": ""
+}
+```
+
+#### `POST /submissions/{issue_id}/comment`
+
+Оставить комментарий к submission.
+
+**Path параметры:**
+
+- `issue_id` (int) - ID issue
+
+**Тело запроса:**
+
+```json
+{
+  "comment": "Please fix the edge case in task 3."
+}
+```
+
+**Ответ (200):**
+
+```json
+{
+  "success": true,
+  "action": "comment",
+  "issue_id": 421525,
+  "value": "Please fix the edge case in task 3.",
+  "message": ""
+}
+```
+
 ### JSON Database
 
 #### `POST /db/sync`
@@ -528,6 +655,37 @@ anytask-scraper serve --session-file ~/.anytask_session.json
 }
 ```
 
+#### `GET /db/diff`
+
+Получить записи, у которых есть pending write-события (оценки/статусы, записанные через `/db/write`, но ещё не применённые).
+
+**Query параметры:**
+
+- `db_file` (string, default=`./queue_db.json`) - путь к файлу DB
+- `course_id` (int, optional) - фильтр по курсу
+
+**Ответ (200):** массив объектов записей DB (такой же формат, как у `/db/entries`)
+
+#### `GET /db/stats`
+
+Получить статистику по DB.
+
+**Query параметры:**
+
+- `db_file` (string, default=`./queue_db.json`) - путь к файлу DB
+- `course_id` (int, optional) - фильтр по курсу
+
+**Ответ (200):**
+
+```json
+{
+  "total": 42,
+  "new": 10,
+  "pulled": 20,
+  "processed": 12
+}
+```
+
 ## HTTP статус коды
 
 | Код | Значение |
@@ -568,6 +726,12 @@ curl -X POST http://localhost:8000/db/sync \
     "pull": true,
     "limit": 10
   }'
+
+# Скачать все файлы submission в виде ZIP (плоская структура)
+curl "http://localhost:8000/submissions/421525/download?flat=true" -o submission.zip
+
+# Скачать один файл с именованием по студенту и заданию
+curl "http://localhost:8000/submissions/421525/files/hw.ipynb?student_task_name=true" -o Ivanov_Ivan_Task1.ipynb
 ```
 
 ### Python (requests)
